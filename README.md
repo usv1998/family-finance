@@ -53,13 +53,7 @@ git push
 ```
 GitHub rebuilds in ~2 mins. App on phone updates automatically.
 
----
 
-## Local testing (optional)
-```
-npm run dev
-```
-Opens at http://localhost:5173
 
 ---
 
