@@ -1,2 +1,2 @@
-import FamilyFinanceTracker from './family-finance-tracker.jsx'
+import FamilyFinanceTracker from './FamilyFinanceTracker.jsx'
 export default FamilyFinanceTracker

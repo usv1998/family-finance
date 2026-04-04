@@ -1,0 +1,83 @@
+export const SEED_DATA = {
+  incomeData: {
+    "FY2026-27": {
+      Selva: {
+        0:  { take_home:133121, epf:16704, espp:118440, car_lease:50706, ad_hoc:[], notes:"Apr — MSFT ESPP vest: 3 shares @ $420x94 = 1,18,440" },
+        1:  { take_home:133171, epf:16704, espp:0,      car_lease:50706, ad_hoc:[], notes:"May — MSFT RSU 14 shares vest" },
+        2:  { take_home:133171, epf:16704, espp:0,      car_lease:50706, ad_hoc:[], notes:"" },
+        3:  { take_home:133171, epf:16704, espp:118440, car_lease:50706, ad_hoc:[], notes:"Jul — MSFT ESPP vest: 3 shares @ $420x94 = 1,18,440" },
+        4:  { take_home:133171, epf:16704, espp:0,      car_lease:50706, ad_hoc:[], notes:"Aug — MSFT RSU 14 shares vest" },
+        5:  { take_home:425938, epf:17372, espp:0,      car_lease:50706, ad_hoc:[], notes:"Sep — 4% hike + bonus 3,62,158 included in take-home. TDS recalculated." },
+        6:  { take_home:125648, epf:17372, espp:197400, car_lease:50706, ad_hoc:[], notes:"Oct — MSFT ESPP vest: 5 shares @ $420x94 = 1,97,400 (Sep bonus boosted ESPP base)" },
+        7:  { take_home:125648, epf:17372, espp:0,      car_lease:50706, ad_hoc:[], notes:"Nov — MSFT RSU 14 shares vest" },
+        8:  { take_home:113296, epf:17372, espp:0,      car_lease:50706, ad_hoc:[], notes:"Dec — Nov RSU recalc raises TDS" },
+        9:  { take_home:113296, epf:17372, espp:118440, car_lease:50706, ad_hoc:[], notes:"Jan — MSFT ESPP vest: 3 shares @ $420x94 = 1,18,440" },
+        10: { take_home:113196, epf:17372, espp:0,      car_lease:50706, ad_hoc:[], notes:"Feb — MSFT RSU 14 shares vest" },
+        11: { take_home:5097,   epf:17372, espp:0,      car_lease:50706, ad_hoc:[], notes:"Mar — Surcharge catch-up. Only 5,097 cash take-home!" },
+      },
+      Akshaya: {
+        0:  { take_home:147323, epf:17198, espp:0,      ad_hoc:[], notes:"" },
+        1:  { take_home:147373, epf:17198, espp:0,      ad_hoc:[], notes:"" },
+        2:  { take_home:219767, epf:17198, espp:0,      ad_hoc:[], notes:"Jun — NVDA RSU 160 shares vest" },
+        3:  { take_home:156776, epf:17198, espp:0,      ad_hoc:[], notes:"" },
+        4:  { take_home:156776, epf:17198, espp:0,      ad_hoc:[], notes:"" },
+        5:  { take_home:332268, epf:17372, espp:795240, ad_hoc:[], notes:"Sep — NVDA RSU 101 shares + ESPP vest 47 shares @ $180x94 = 7,95,240" },
+        6:  { take_home:128813, epf:17372, espp:0,      ad_hoc:[], notes:"Oct — Lowest cash month. OPD insurance deduction + elevated TDS." },
+        7:  { take_home:146626, epf:17372, espp:0,      ad_hoc:[], notes:"" },
+        8:  { take_home:191732, epf:17372, espp:0,      ad_hoc:[], notes:"Dec — NVDA RSU 100 shares vest" },
+        9:  { take_home:164303, epf:17372, espp:0,      ad_hoc:[], notes:"" },
+        10: { take_home:164203, epf:17372, espp:0,      ad_hoc:[], notes:"" },
+        11: { take_home:132805, epf:17372, espp:795240, ad_hoc:[], notes:"Mar — NVDA RSU 100 shares + ESPP 47 shares @ $180x94 = 7,95,240. 15% surcharge!" },
+      },
+    },
+  },
+  rsuData: {
+    "FY2026-27": [
+      { id:"rsu-s1", person:"Selva",   stock:"MSFT", vest_date:"2026-05-15", units_vested:14,  stock_price_usd:420, usd_inr_rate:94, tax_withheld_units:4,  grant_id:"MSFT-FY27", month_idx:1,  fy:"FY2026-27" },
+      { id:"rsu-s2", person:"Selva",   stock:"MSFT", vest_date:"2026-08-15", units_vested:14,  stock_price_usd:420, usd_inr_rate:94, tax_withheld_units:4,  grant_id:"MSFT-FY27", month_idx:4,  fy:"FY2026-27" },
+      { id:"rsu-s3", person:"Selva",   stock:"MSFT", vest_date:"2026-11-15", units_vested:14,  stock_price_usd:420, usd_inr_rate:94, tax_withheld_units:4,  grant_id:"MSFT-FY27", month_idx:7,  fy:"FY2026-27" },
+      { id:"rsu-s4", person:"Selva",   stock:"MSFT", vest_date:"2027-02-15", units_vested:14,  stock_price_usd:420, usd_inr_rate:94, tax_withheld_units:5,  grant_id:"MSFT-FY27", month_idx:10, fy:"FY2026-27" },
+      { id:"rsu-a1", person:"Akshaya", stock:"NVDA", vest_date:"2026-06-15", units_vested:160, stock_price_usd:180, usd_inr_rate:94, tax_withheld_units:50, grant_id:"NVDA-FY27", month_idx:2,  fy:"FY2026-27" },
+      { id:"rsu-a2", person:"Akshaya", stock:"NVDA", vest_date:"2026-09-15", units_vested:101, stock_price_usd:180, usd_inr_rate:94, tax_withheld_units:32, grant_id:"NVDA-FY27", month_idx:5,  fy:"FY2026-27" },
+      { id:"rsu-a3", person:"Akshaya", stock:"NVDA", vest_date:"2026-12-15", units_vested:100, stock_price_usd:180, usd_inr_rate:94, tax_withheld_units:31, grant_id:"NVDA-FY27", month_idx:8,  fy:"FY2026-27" },
+      { id:"rsu-a4", person:"Akshaya", stock:"NVDA", vest_date:"2027-03-15", units_vested:100, stock_price_usd:180, usd_inr_rate:94, tax_withheld_units:36, grant_id:"NVDA-FY27", month_idx:11, fy:"FY2026-27" },
+    ],
+  },
+  investmentsData: {
+    "FY2026-27": {
+      epfOpening: { Selva: 363580, Akshaya: 349612 },
+      babyFund: {
+        monthlyTarget: 50000,
+        months: { 0:50000, 1:50000, 2:50000, 3:50000, 4:50000, 5:50000, 6:50000, 7:50000, 8:50000, 9:50000, 10:50000, 11:50000 },
+      },
+      debtFunds: [],
+    },
+  },
+  expensesData: {
+    "FY2026-27": {
+      categories: [
+        { id:"rent",      name:"Rent",       budget:48000, color:"#3B82F6" },
+        { id:"parents",   name:"Parents",    budget:20000, color:"#F59E0B" },
+        { id:"groceries", name:"Groceries",  budget:15000, color:"#22C55E" },
+        { id:"dining",    name:"Dining Out", budget:6000,  color:"#14B8A6" },
+        { id:"shopping",  name:"Shopping",   budget:10000, color:"#A855F7" },
+        { id:"travel",    name:"Travel",     budget:8000,  color:"#EC4899" },
+        { id:"utilities", name:"Utilities",  budget:3000,  color:"#8B96AD" },
+        { id:"medical",   name:"Medical",    budget:3000,  color:"#EF4444" },
+        { id:"misc",      name:"Misc",       budget:5000,  color:"#5A6580" },
+      ],
+      actuals: {},
+    },
+  },
+  portfolioData: {
+    "FY2026-27": {
+      stocks: { MSFT: { shares: 0 }, NVDA: { shares: 0 } },
+      sips: [
+        { id:"nifty50",   name:"Nifty 50 Index Fund",  monthly:14000, months:{} },
+        { id:"midcap150", name:"Midcap 150 Index Fund", monthly:6000,  months:{} },
+      ],
+      gold: { units: 0, pricePerUnit: 15100 },
+      otherEquity: [],
+    },
+  },
+};
