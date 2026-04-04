@@ -1,4 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ─── Supabase client (undefined if env vars not set) ────────────────
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 // ─── Constants ──────────────────────────────────────────────────────
 const MONTHS = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
@@ -144,14 +152,30 @@ const SEED_DATA = {
 // v2 — bumped to force re-seed with bug fixes + investments data
 const STORAGE_KEY = "family-finance-v2";
 
-const loadData = async () => {
+const loadData = async (userId) => {
+  if (supabase && userId) {
+    try {
+      const { data, error } = await supabase
+        .from("finance_data").select("data").eq("id", userId).single();
+      if (!error && data?.data) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data.data)); // cache locally
+        return data.data;
+      }
+    } catch {}
+  }
+  // fallback to localStorage
   try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; }
   catch { return null; }
 };
 
-const saveData = async (data) => {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
-  catch (e) { console.error("Save failed:", e); }
+const saveData = async (data, userId) => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+  if (supabase && userId) {
+    try {
+      await supabase.from("finance_data")
+        .upsert({ id: userId, data, updated_at: new Date().toISOString() });
+    } catch (e) { console.error("Supabase save failed:", e); }
+  }
 };
 
 // ─── Live Data Defaults ─────────────────────────────────────────────
@@ -1355,6 +1379,47 @@ function PlaceholderTab({ title, description, icon }) {
   );
 }
 
+// ─── Login Screen ────────────────────────────────────────────────────
+function LoginScreen() {
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
+
+  const login = async () => {
+    if (!email || !password) return;
+    setLoading(true); setError("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message);
+    setLoading(false);
+  };
+
+  const inp = { padding:"10px 14px", background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"14px", outline:"none", width:"100%", boxSizing:"border-box" };
+
+  return (
+    <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',-apple-system,sans-serif" }}>
+      <div style={{ background:T.surface, borderRadius:"16px", padding:"40px 36px", border:`1px solid ${T.border}`, width:"100%", maxWidth:"360px" }}>
+        <div style={{ textAlign:"center", marginBottom:"28px" }}>
+          <div style={{ width:"52px", height:"52px", borderRadius:"14px", background:`linear-gradient(135deg,${T.accent},${T.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"26px", fontWeight:800, color:T.bg, margin:"0 auto 14px" }}>₹</div>
+          <h1 style={{ margin:0, fontSize:"20px", fontWeight:800, color:T.text, letterSpacing:"-0.3px" }}>Family Finance</h1>
+          <p style={{ margin:"6px 0 0", fontSize:"13px", color:T.textMuted }}>Selva & Akshaya · Sign in to sync your data</p>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" style={inp}
+            onKeyDown={e=>e.key==="Enter"&&login()}/>
+          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password" style={inp}
+            onKeyDown={e=>e.key==="Enter"&&login()}/>
+          {error && <div style={{ color:T.red, fontSize:"12px", padding:"6px 10px", background:T.red+"18", borderRadius:"6px" }}>{error}</div>}
+          <button onClick={login} disabled={loading}
+            style={{ padding:"12px", background:T.accent, border:"none", borderRadius:"8px", color:T.bg, fontSize:"14px", fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.7:1, marginTop:"4px" }}>
+            {loading ? "Signing in…" : "Sign In"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ────────────────────────────────────────────────────────
 export default function FamilyFinanceTracker() {
   const [activeTab,      setActiveTab]      = useState("income");
@@ -1369,14 +1434,34 @@ export default function FamilyFinanceTracker() {
   const [editMonth,      setEditMonth]      = useState(null);
   const [editPerson,     setEditPerson]     = useState("Selva");
   const [loading,        setLoading]        = useState(true);
+  const [user,           setUser]           = useState(null);
+  const [authReady,      setAuthReady]      = useState(!supabase); // true immediately if no supabase
+  const [syncing,        setSyncing]        = useState(false);
   const [rsuFilterPerson,setRsuFilterPerson]= useState("all");
   const [rsuFilterStock, setRsuFilterStock] = useState("all");
   const saveRef = useRef(null);
+  const userRef = useRef(null);
 
-  // Load on mount — seed if storage empty (v2 forces re-seed with bug fixes)
+  // Auth state listener
   useEffect(()=>{
+    if(!supabase){ setAuthReady(true); return; }
+    supabase.auth.getSession().then(({ data:{ session } })=>{
+      setUser(session?.user ?? null);
+      userRef.current = session?.user ?? null;
+      setAuthReady(true);
+    });
+    const { data:{ subscription } } = supabase.auth.onAuthStateChange((_e, session)=>{
+      setUser(session?.user ?? null);
+      userRef.current = session?.user ?? null;
+    });
+    return ()=>subscription.unsubscribe();
+  },[]);
+
+  // Load data once auth is ready
+  useEffect(()=>{
+    if(!authReady) return;
     (async()=>{
-      const saved = await loadData();
+      const saved = await loadData(userRef.current?.id);
       if(saved){
         if(saved.incomeData)      setIncomeData(saved.incomeData);
         if(saved.rsuData)         setRsuData(saved.rsuData);
@@ -1391,15 +1476,19 @@ export default function FamilyFinanceTracker() {
         setInvestmentsData(SEED_DATA.investmentsData);
         setExpensesData(SEED_DATA.expensesData);
         setPortfolioData(SEED_DATA.portfolioData);
-        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData });
+        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData }, userRef.current?.id);
       }
       setLoading(false);
     })();
-  },[]);
+  },[authReady]);
 
   const persist = useCallback((iD,rD,invD,expD,portD)=>{
     if(saveRef.current) clearTimeout(saveRef.current);
-    saveRef.current = setTimeout(()=>saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD}), 500);
+    setSyncing(true);
+    saveRef.current = setTimeout(async()=>{
+      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD}, userRef.current?.id);
+      setSyncing(false);
+    }, 500);
   },[]);
 
   const updateMonthlyIncome = (person, mi, data) => {
@@ -1467,7 +1556,8 @@ export default function FamilyFinanceTracker() {
     URL.revokeObjectURL(url);
   };
 
-  if(loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading...</div>;
+  if(!authReady || (supabase && !user)) return supabase && !user && authReady ? <LoginScreen/> : <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
+  if(loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
 
   const btnStyle=(active)=>({padding:"8px 16px",borderRadius:"8px",border:"none",fontSize:"13px",fontWeight:600,cursor:"pointer",transition:"all 0.2s",background:active?T.accent:"transparent",color:active?T.bg:T.textDim});
   const selectStyle={padding:"8px 14px",background:T.card,border:`1px solid ${T.border}`,borderRadius:"8px",color:T.text,fontSize:"13px",outline:"none",cursor:"pointer",appearance:"none",fontWeight:600};
@@ -1501,9 +1591,20 @@ export default function FamilyFinanceTracker() {
             </div>
             <div style={{ display:"flex", gap:"10px", alignItems:"center", flexWrap:"wrap" }}>
               <LiveStrip liveData={liveData}/>
+              {supabase && (
+                <div style={{ display:"flex", alignItems:"center", gap:"6px", fontSize:"11px", color:syncing?T.amber:T.accent, fontWeight:600 }}>
+                  <span style={{ width:"6px", height:"6px", borderRadius:"50%", background:syncing?T.amber:T.accent, display:"inline-block", animation:syncing?"pulse 1s infinite":"none" }}/>
+                  {syncing ? "Saving…" : "Synced"}
+                </div>
+              )}
               <select value={fy} onChange={e=>setFY(e.target.value)} style={{...selectStyle,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:T.accent}}>
                 {getFYOptions().map(f=><option key={f} value={f}>{f}</option>)}
               </select>
+              {supabase && user && (
+                <button onClick={()=>supabase.auth.signOut()} style={{ padding:"7px 14px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textMuted, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+                  Sign Out
+                </button>
+              )}
             </div>
           </div>
           <div style={{ display:"flex", gap:"4px", overflowX:"auto", paddingBottom:"4px" }}>
