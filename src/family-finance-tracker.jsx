@@ -168,19 +168,21 @@ function LiveStrip({ liveData }) {
   );
 }
 
-function SummaryCards({ incomeData, rsuData, fy }) {
+function SummaryCards({ incomeData, rsuData, investmentsData, fy }) {
   const sum = (fn) => PERSONS.reduce((s,p)=>s+MONTHS.reduce((ss,_,mi)=>ss+(fn(p,mi)||0),0),0);
   const totalTH  = sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.take_home));
-  const totalEPF = sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.epf));
+  const empEPF   = sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.epf));
+  const epfOpening = investmentsData?.[fy]?.epfOpening || { Selva:0, Akshaya:0 };
+  const totalEPF = (epfOpening.Selva + epfOpening.Akshaya) + empEPF * 2; // opening + emp + employer (1:1 match)
   const totalESPP= sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.espp));
-  const totalRSU = (rsuData?.[fy]||[]).reduce((s,r)=>s+(r.units_vested*r.stock_price_usd*r.usd_inr_rate||0),0);
+  const totalRSU = (rsuData?.[fy]||[]).reduce((s,r)=>s+((r.units_vested-r.tax_withheld_units)*r.stock_price_usd*r.usd_inr_rate||0),0);
   const totalCar = sum((p,mi)=>p==="Selva"?Number(incomeData?.[fy]?.[p]?.[mi]?.car_lease):0);
   const totalAH  = sum((p,mi)=>(incomeData?.[fy]?.[p]?.[mi]?.ad_hoc||[]).reduce((a,i)=>a+(Number(i.amount)||0),0));
   const grand    = totalTH + totalEPF + totalESPP + totalRSU + totalCar + totalAH;
   const cards = [
     {label:"Total Take-Home",  value:fmtINR(totalTH),   color:T.accent},
-    {label:"Total RSU (INR)",  value:fmtINR(totalRSU),  color:T.purple},
-    {label:"Total EPF",        value:fmtINR(totalEPF),  color:T.blue},
+    {label:"Total RSU Net (INR)", value:fmtINR(totalRSU),  color:T.purple},
+    {label:"Total EPF Corpus",    value:fmtINR(totalEPF),  color:T.blue},
     {label:"Total ESPP Stocks",value:fmtINR(totalESPP), color:T.amber},
     {label:"Grand Total",      value:fmtINR(grand),     color:T.white, grand:true},
   ];
@@ -871,7 +873,7 @@ export default function FamilyFinanceTracker() {
               </div>
               <button onClick={exportCSV} style={{ padding:"8px 16px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", cursor:"pointer", fontWeight:600 }}>Export CSV ↓</button>
             </div>
-            <SummaryCards incomeData={incomeData} rsuData={rsuData} fy={fy}/>
+            <SummaryCards incomeData={incomeData} rsuData={rsuData} investmentsData={investmentsData} fy={fy}/>
             <IncomeTable  incomeData={incomeData} rsuData={rsuData} fy={fy} viewMode={viewMode}/>
             <div style={{ marginTop:"24px" }}>
               <h3 style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"12px" }}>Enter Monthly Income</h3>
