@@ -9,8 +9,8 @@ This file gives Claude Code full context to continue development without re-expl
 A personal family finance tracker built in React + Vite, deployed to GitHub Pages.
 - **Live URL**: https://usv1998.github.io/family-finance
 - **Repo**: https://github.com/usv1998/family-finance
-- **Stack**: React 18, Vite 5, vite-plugin-pwa (PWA), localStorage persistence
-- **Version**: v1.1
+- **Stack**: React 18, Vite 5, vite-plugin-pwa (PWA), Supabase (Postgres) + localStorage fallback
+- **Version**: v1.2
 - **Storage key**: `family-finance-v2` (bump to v3 on next breaking data change)
 
 ---
