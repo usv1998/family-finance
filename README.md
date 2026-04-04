@@ -1,7 +1,5 @@
 # Family Finance Tracker
 
-Selva & Akshaya · Microsoft + Nvidia · FY2026-27 pre-loaded
-
 ---
 
 ## First-time deploy to GitHub Pages (~15 mins)
