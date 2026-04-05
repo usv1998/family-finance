@@ -3,6 +3,7 @@ import { T } from "../../lib/theme";
 import { fmtINR, genId } from "../../lib/formatters";
 import { MONTHS, MONTH_FULL } from "../../lib/constants";
 import { SEED_DATA } from "../../lib/seed";
+import { downloadCSV } from "../../lib/csvExport";
 
 export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   const inv       = expensesData?.[fy] || {};
@@ -31,6 +32,18 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   const annualBudget= monthBudget() * 12;
 
   const updateInv = (patch) => onUpdate(fy, { categories, actuals, ...inv, ...patch });
+
+  const exportExpenses = () => {
+    const headers = ["Category", "Budget/Month", ...MONTHS, "FY Total Actual", "FY Budget", "Variance"];
+    const rows = categories.map(c => {
+      const monthly   = MONTHS.map((_,mi) => getActual(mi, c.id));
+      const fyTotal   = monthly.reduce((s,v)=>s+v,0);
+      const fyBudget  = Number(c.budget||0) * 12;
+      return [c.name, c.budget, ...monthly, fyTotal, fyBudget, fyBudget - fyTotal];
+    });
+    const totals = ["TOTAL", monthBudget(), ...MONTHS.map((_,mi)=>monthTotal(mi)), ytdActual, annualBudget, annualBudget-ytdActual];
+    downloadCSV(`expenses_${fy}.csv`, [headers, ...rows, totals]);
+  };
 
   // start editing a month
   const startEdit = (mi) => {
@@ -186,10 +199,13 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
       <div style={{ background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`, marginBottom:"24px", overflow:"hidden" }}>
         <div style={{ padding:"14px 20px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <span style={{ fontSize:"14px", fontWeight:700, color:T.text }}>Annual Overview</span>
+          <div style={{ display:"flex", gap:"8px" }}>
+          <button onClick={exportExpenses} style={{ padding:"6px 13px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>Export CSV ↓</button>
           <button onClick={()=>{ setEditBudgets(!editBudgets); setBudgetDraft(Object.fromEntries(categories.map(c=>[c.id,c.budget]))); }}
             style={{ padding:"6px 14px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
             {editBudgets?"Cancel":"Edit Budgets"}
           </button>
+          </div>
         </div>
         <div style={{ overflowX:"auto" }}>
           <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"12px" }}>

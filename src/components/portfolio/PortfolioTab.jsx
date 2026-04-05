@@ -2,6 +2,7 @@ import { useState } from "react";
 import { T } from "../../lib/theme";
 import { fmtINR, fmtUSD, genId } from "../../lib/formatters";
 import { PERSONS, MONTHS } from "../../lib/constants";
+import { downloadCSV } from "../../lib/csvExport";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -152,6 +153,21 @@ export default function PortfolioTab({ portfolioData, investmentsData, incomeDat
   };
   const deleteOther = (id) => updateInv({ otherEquity: otherEquity.filter(o => o.id!==id) });
 
+  const exportPortfolio = () => {
+    const isC = viewMode === "cumulative";
+    const headers = ["Asset Class", "Detail", "Value INR", "% of Corpus"];
+    const snap = isC ? cumCorpus : fyCorpus;
+    const tot  = snap.reduce((s,c)=>s+c.value,0);
+    const rows = snap.map(c => [c.label, "", Math.round(c.value), tot>0?`${Math.round(c.value/tot*100)}%`:"0%"]);
+    // detail rows
+    const detail = [
+      ["Stocks","MSFT", Math.round(msftVal), ""],
+      ["Stocks","NVDA", Math.round(nvdaVal), ""],
+      ...(isC ? cumDebtFunds : debtFunds).map(d=>["Debt Funds", d.name||"", Math.round(Number(d.amount||0)), ""]),
+    ];
+    downloadCSV(`portfolio_${isC?"all-time":fy}.csv`, [headers, ...rows, [], ["--- Detail ---","","",""], ...detail]);
+  };
+
   const saveOpening = () => {
     onUpdate("opening", { ...openingDraft, initialized: true });
     setShowOpeningInit(false);
@@ -249,12 +265,15 @@ export default function PortfolioTab({ portfolioData, investmentsData, incomeDat
           <button onClick={()=>setViewMode("cumulative")} style={btnStyle(viewMode==="cumulative")}>All-Time Corpus</button>
           <button onClick={()=>setViewMode("fy")} style={btnStyle(viewMode==="fy")}>FY View ({fy})</button>
         </div>
+        <div style={{ display:"flex", gap:"8px" }}>
+        <button onClick={exportPortfolio} style={{ padding:"8px 14px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>Export CSV ↓</button>
         {viewMode==="cumulative" && (
           <button onClick={()=>{ setOpeningDraft(null); setShowOpeningInit(true); }}
             style={{ padding:"8px 16px", background:"transparent", border:`1px solid ${T.amber}66`, borderRadius:"8px", color:T.amber, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
             {opening.initialized ? "Edit Opening Balances" : "⚠ Initialize Opening Balances"}
           </button>
         )}
+        </div>
       </div>
 
       {/* Opening init form */}
