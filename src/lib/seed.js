@@ -1,4 +1,36 @@
 export const SEED_DATA = {
+  // Flat array — grants span multiple FYs, not scoped to one FY
+  rsuGrants: [
+    {
+      id: "grant-selva-fy27",
+      person: "Selva", stock: "MSFT",
+      grant_date: "2025-02-15",
+      grant_id: "MSFT-FY27-Refresh",
+      total_units: 56,
+      vesting_type: "quarterly",
+      vesting_years: 1,
+      first_vest_date: "2026-05-15",
+      vesting_schedule: [],
+      notes: "56 shares, 14/vest, quarterly May/Aug/Nov/Feb",
+    },
+    {
+      id: "grant-akshaya-fy27",
+      person: "Akshaya", stock: "NVDA",
+      grant_date: "2025-06-15",
+      grant_id: "NVDA-FY27-Annual",
+      total_units: 461,
+      vesting_type: "custom",
+      vesting_years: 1,
+      first_vest_date: "",
+      vesting_schedule: [
+        { vest_date: "2026-06-15", units: 160 },
+        { vest_date: "2026-09-15", units: 101 },
+        { vest_date: "2026-12-15", units: 100 },
+        { vest_date: "2027-03-15", units: 100 },
+      ],
+      notes: "461 shares: Jun 160 / Sep 101 / Dec 100 / Mar 100",
+    },
+  ],
   incomeData: {
     "FY2026-27": {
       Selva: {

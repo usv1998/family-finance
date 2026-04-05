@@ -23,6 +23,7 @@ export default function FamilyFinanceTracker() {
   const [investmentsData,setInvestmentsData]= useState({});
   const [expensesData,   setExpensesData]   = useState({});
   const [portfolioData,  setPortfolioData]  = useState({});
+  const [rsuGrants,      setRsuGrants]      = useState([]);
   const [liveData,       setLiveData]       = useState(LIVE_DEFAULTS);
   const [refreshing,     setRefreshing]     = useState(false);
   const [loading,        setLoading]        = useState(true);
@@ -83,23 +84,26 @@ export default function FamilyFinanceTracker() {
         else                      setExpensesData(SEED_DATA.expensesData);
         if(saved.portfolioData)   setPortfolioData(saved.portfolioData);
         else                      setPortfolioData(SEED_DATA.portfolioData);
+        if(saved.rsuGrants)       setRsuGrants(saved.rsuGrants);
+        else                      setRsuGrants(SEED_DATA.rsuGrants);
       } else {
         setIncomeData(SEED_DATA.incomeData);
         setRsuData(SEED_DATA.rsuData);
         setInvestmentsData(SEED_DATA.investmentsData);
         setExpensesData(SEED_DATA.expensesData);
         setPortfolioData(SEED_DATA.portfolioData);
-        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData }, userRef.current?.id);
+        setRsuGrants(SEED_DATA.rsuGrants);
+        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData, rsuGrants:SEED_DATA.rsuGrants }, userRef.current?.id);
       }
       setLoading(false);
     })();
   },[authReady]);
 
-  const persist = useCallback((iD,rD,invD,expD,portD)=>{
+  const persist = useCallback((iD,rD,invD,expD,portD,rG)=>{
     if(saveRef.current) clearTimeout(saveRef.current);
     setSyncing(true);
     saveRef.current = setTimeout(async()=>{
-      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD}, userRef.current?.id);
+      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG}, userRef.current?.id);
       setSyncing(false);
     }, 500);
   },[]);
@@ -119,7 +123,7 @@ export default function FamilyFinanceTracker() {
       }
     }
     setIncomeData(next);
-    persist(next, rsuData, investmentsData, expensesData, portfolioData);
+    persist(next, rsuData, investmentsData, expensesData, portfolioData, rsuGrants);
   };
 
   const addRsuEvent = (event) => {
@@ -127,32 +131,44 @@ export default function FamilyFinanceTracker() {
     if(!next[event.fy]) next[event.fy]=[];
     next[event.fy]=[...next[event.fy],event];
     setRsuData(next);
-    persist(incomeData, next, investmentsData, expensesData, portfolioData);
+    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants);
   };
 
   const deleteRsuEvent = (id) => {
     const next={...rsuData};
     Object.keys(next).forEach(k=>{next[k]=next[k].filter(e=>e.id!==id);});
     setRsuData(next);
-    persist(incomeData, next, investmentsData, expensesData, portfolioData);
+    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants);
+  };
+
+  const addRsuGrant = (grant) => {
+    const next = [...rsuGrants, grant];
+    setRsuGrants(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next);
+  };
+
+  const deleteRsuGrant = (id) => {
+    const next = rsuGrants.filter(g => g.id !== id);
+    setRsuGrants(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next);
   };
 
   const updateInvestments = (fyKey, data) => {
     const next={...investmentsData,[fyKey]:data};
     setInvestmentsData(next);
-    persist(incomeData, rsuData, next, expensesData, portfolioData);
+    persist(incomeData, rsuData, next, expensesData, portfolioData, rsuGrants);
   };
 
   const updateExpenses = (fyKey, data) => {
     const next={...expensesData,[fyKey]:data};
     setExpensesData(next);
-    persist(incomeData, rsuData, investmentsData, next, portfolioData);
+    persist(incomeData, rsuData, investmentsData, next, portfolioData, rsuGrants);
   };
 
   const updatePortfolio = (fyKey, data) => {
     const next={...portfolioData,[fyKey]:data};
     setPortfolioData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, next);
+    persist(incomeData, rsuData, investmentsData, expensesData, next, rsuGrants);
   };
 
   if(!authReady || (supabase && !user)) return supabase && !user && authReady ? <LoginScreen/> : <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
@@ -235,10 +251,13 @@ export default function FamilyFinanceTracker() {
         {activeTab==="rsu"&&(
           <RsuTab
             rsuData={rsuData}
+            rsuGrants={rsuGrants}
             fy={fy}
             liveData={liveData}
             onAdd={addRsuEvent}
             onDelete={deleteRsuEvent}
+            onAddGrant={addRsuGrant}
+            onDeleteGrant={deleteRsuGrant}
           />
         )}
         {activeTab==="investments"&&(
