@@ -9,9 +9,9 @@ This file gives Claude Code full context to continue development without re-expl
 A personal family finance tracker built in React + Vite, deployed to GitHub Pages.
 - **Live URL**: https://usv1998.github.io/family-finance
 - **Repo**: https://github.com/usv1998/family-finance
-- **Stack**: React 18, Vite 5, vite-plugin-pwa (PWA), Supabase (Postgres) + localStorage fallback
-- **Version**: v1.2
-- **Storage key**: `family-finance-v2` (bump to v3 on next breaking data change)
+- **Stack**: React 18, Vite 5, Recharts, vite-plugin-pwa (PWA), Supabase (Postgres) + localStorage fallback
+- **Version**: v1.4
+- **Storage key**: `family-finance-v2` (bump to `v3` on next breaking data change)
 
 ---
 
@@ -178,7 +178,7 @@ Bump to `v3` on next breaking change.
     "FY2026-27": {
       "Selva": {
         0: { take_home, epf, espp, car_lease, ad_hoc: [{id, label, amount}], notes },
-        // ... months 0-11 (Apr=0, Mar=11)
+        // months 0–11 (Apr=0, Mar=11)
       },
       "Akshaya": { /* same but no car_lease */ }
     }
@@ -189,45 +189,37 @@ Bump to `v3` on next breaking change.
         tax_withheld_units, grant_id, month_idx, fy }
     ]
   },
+  rsuGrants: [
+    { id, grant_id, person, stock, grant_date, total_units, vesting_years,
+      first_vest_date, vesting_type,  // "equal_quarterly" | "custom"
+      vesting_schedule: [{vest_date, units}],  // only for custom
+      notes }
+  ],
   investmentsData: {
     "FY2026-27": {
       epfOpening: { Selva: 363580, Akshaya: 349612 },
-      babyFund: {
-        monthlyTarget: 50000,
-        months: { 0: 50000, ... 11: 50000 }
-      },
+      babyFund: { monthlyTarget: 50000, months: { 0: 50000, ... } },
       debtFunds: [{ id, name, type, amount, date, notes }]
     }
+  },
+  expensesData: {
+    "FY2026-27": {
+      categories: [{ id, name, budget, color }],
+      actuals: { 0: { [catId]: amount }, ... }  // month 0–11
+    }
+  },
+  portfolioData: {
+    "opening": {
+      sip: { Selva: 0, Akshaya: 0 },
+      epf: { Selva: 363580, Akshaya: 349612 },
+      debt: 0, babyFund: 0
+    },
+    "FY2025-26": { sip, epf, debt, babyFund }
   }
 }
 ```
 
-Month index mapping: Apr=0, May=1, Jun=2, Jul=3, Aug=4, Sep=5, Oct=6, Nov=7, Dec=8, Jan=9, Feb=10, Mar=11
-
----
-
-## Known Bugs / Pending Fixes
-
-### Already fixed in v1.1 (deploy pending)
-1. ~~ESPP label said "Contribution" — should be "ESPP Net Stock (₹)"~~
-2. ~~Selva Sep bonus ₹3,62,158 was in ad_hoc causing double-count~~
-3. ~~Akshaya EPF was flat — now steps up 17198→17372 in Sep~~
-
-### Fixed in v1.2
-4. ~~RSU summary card shows gross — should show net (units_vested - tax_withheld_units) × price × rate~~
-5. ~~EPF summary card — shows only Selva employee contribution. Should be both persons + employer match + opening balances~~
-
-### Future features (tabs still locked)
-- ~~**Expenses tab** — budget vs actuals (Rent ₹48k, Parents ₹20k, Baby, Groceries, Travel, etc.)~~ ✅ Done in v1.2
-- **Portfolio tab** — live MSFT/NVDA stock valuations, total corpus, equity vs debt breakdown
-
-### Expenses tab (v1.2)
-- 9 default categories: Rent ₹48k, Parents ₹20k, Groceries ₹15k, Dining ₹6k, Shopping ₹10k, Travel ₹8k, Utilities ₹3k, Medical ₹3k, Misc ₹5k
-- Month selector to enter actuals; inline edit per category
-- Color-coded % bar (green ≤100%, amber ≤120%, red >120%)
-- Annual overview table (all months × all categories)
-- Edit budgets inline; add/remove custom categories
-- expensesData stored in `family-finance-v2` localStorage key (no version bump needed — additive key)
+Month index: Apr=0, May=1, Jun=2, Jul=3, Aug=4, Sep=5, Oct=6, Nov=7, Dec=8, Jan=9, Feb=10, Mar=11
 
 ---
 
@@ -236,19 +228,78 @@ Month index mapping: Apr=0, May=1, Jun=2, Jul=3, Aug=4, Sep=5, Oct=6, Nov=7, Dec
 ```
 family-finance-app/
 ├── src/
-│   ├── family-finance-tracker.jsx   ← MAIN FILE — all components in one file
-│   ├── App.jsx                       ← just re-exports the tracker
-│   └── main.jsx                      ← React entry point
-├── public/                           ← PWA icons
-├── .github/workflows/deploy.yml      ← auto-deploys on git push to main
-├── vite.config.js                    ← BASE_PATH = "/family-finance/"
+│   ├── FamilyFinanceTracker.jsx      ← root component, state, routing
+│   ├── App.jsx                        ← mounts FamilyFinanceTracker
+│   ├── main.jsx                       ← React entry point
+│   ├── lib/
+│   │   ├── constants.js               ← TABS, MONTHS, PERSONS, STOCKS, LIVE_DEFAULTS
+│   │   ├── theme.js                   ← T color palette
+│   │   ├── formatters.js              ← fmtINR, fmtUSD, getCurrentFY, getCurrentMonthIdx, getFYOptions
+│   │   ├── storage.js                 ← loadData / saveData (Supabase + localStorage)
+│   │   ├── supabase.js                ← Supabase client
+│   │   ├── seed.js                    ← SEED_DATA (incomeData, rsuData, rsuGrants, investmentsData, expensesData, portfolioData)
+│   │   ├── marketData.js              ← fetchLiveData() — Yahoo Finance v7 + Frankfurter fallback (parallel)
+│   │   ├── grantUtils.js              ← dateToFY, generateVestSchedule, isConfirmed, getConfirmedEvent, getUpcomingVests
+│   │   └── csvExport.js               ← downloadCSV(filename, rows) — shared, adds BOM for Excel
+│   └── components/
+│       ├── LiveStrip.jsx              ← live MSFT/NVDA/USDINR bar with staleness indicator
+│       ├── LoginScreen.jsx            ← Supabase auth
+│       ├── income/
+│       │   ├── IncomeTab.jsx          ← Table/Charts toggle; Chart sub-tabs: Income Growth / Savings Rate / Projection
+│       │   ├── IncomeTable.jsx        ← 12-month grid, combined/per-person view, highlight current month
+│       │   ├── SummaryCards.jsx       ← FY summary cards
+│       │   ├── MonthlyInput.jsx       ← per-month income entry form
+│       │   └── AdHocItems.jsx         ← ad-hoc/bonus items editor
+│       ├── rsu/
+│       │   ├── RsuTab.jsx             ← Vest Events / Grant Schedule toggle; upcoming vests banner; CSV export
+│       │   ├── RsuTable.jsx           ← vest events table + unrealized gain columns (live-price dependent)
+│       │   ├── RsuForm.jsx            ← add vest event form
+│       │   ├── GrantForm.jsx          ← add RSU grant (equal quarterly or custom)
+│       │   └── GrantList.jsx          ← grant cards with progress bar + expandable vest schedule
+│       ├── investments/
+│       │   └── InvestmentsTab.jsx
+│       ├── expenses/
+│       │   └── ExpensesTab.jsx        ← budget vs actuals, categories, annual overview, CSV export
+│       ├── portfolio/
+│       │   └── PortfolioTab.jsx       ← all-time corpus + FY view, opening balances init, CSV export
+│       ├── tax/
+│       │   └── TaxTab.jsx             ← FY2025-26 Old vs New regime estimator, per-person, auto-fills RSU/ESPP/bonus
+│       └── charts/
+│           ├── IncomeGrowthChart.jsx  ← stacked bar + trend line (lazy)
+│           ├── SavingsRateChart.jsx   ← income vs expenses bars + savings rate % line (lazy)
+│           └── ProjectionChart.jsx   ← actuals + projected FYs, per-person growth %, RSU from grants (lazy)
+├── public/                            ← PWA icons (pwa-192, pwa-512, apple-touch-icon, favicon)
+├── .github/workflows/deploy.yml       ← auto-deploy on push to main (Vite build → gh-pages)
+├── vite.config.js                     ← BASE_PATH="/family-finance/", manualChunks:{recharts}, PWA config
 ├── package.json
-└── CONTEXT.md                        ← this file
+└── CONTEXT.md                         ← this file
 ```
 
 ---
 
-## Theme Colors (variable `T` or `theme`)
+## Key Architecture Notes
+
+- **Indian Financial Year**: Apr=0 … Mar=11. `getCurrentMonthIdx()` and `getCurrentFY()` in `formatters.js`.
+- **Live market data**: Yahoo Finance v7 (MSFT, NVDA, USDINR=X) + Frankfurter.app fallback, fetched in parallel via `Promise.allSettled`. Auto-refresh every 15 min + manual ↻ button. Staleness shown as LIVE/amber/STALE.
+- **RSU grants**: flat array (all FYs). `generateVestSchedule()` produces equal-quarterly or custom schedules. Confirmed vests matched to actual `rsuData` events via ±7 day tolerance.
+- **Code splitting**: Recharts (157KB gz) in its own chunk via `manualChunks`. All three chart components lazy-loaded with `React.lazy` + `Suspense`. Initial bundle ~78KB gz.
+- **CSV export**: shared `downloadCSV(filename, rows)` utility with UTF-8 BOM for Excel. Used in Income, RSU, Expenses, Portfolio tabs.
+
+---
+
+## Bundle Sizes (approximate, gzip)
+
+| Chunk | Size |
+|-------|------|
+| index.js (app) | ~78KB |
+| recharts.js | ~157KB (on-demand) |
+| IncomeGrowthChart.js | ~2KB (lazy) |
+| SavingsRateChart.js | ~2KB (lazy) |
+| ProjectionChart.js | ~3KB (lazy) |
+
+---
+
+## Theme Colors (`T` from `src/lib/theme.js`)
 
 ```javascript
 bg:"#0B1120", surface:"#131B2E", card:"#1A2340",
@@ -261,7 +312,18 @@ selva:"#3B82F6", akshaya:"#EC4899"
 
 ---
 
-## Deploy Command
+## Tax Estimation (FY 2025-26, `TaxTab.jsx`)
+
+**New regime slabs (Budget 2025):** 0% → ₹4L · 5% → ₹8L · 10% → ₹12L · 15% → ₹16L · 20% → ₹20L · 25% → ₹24L · 30% above
+- Std deduction ₹75,000 · 87A full rebate if taxable ≤ ₹12L
+**Old regime slabs:** 0% → ₹2.5L · 5% → ₹5L · 20% → ₹10L · 30% above
+- Std deduction ₹50,000 · 87A rebate ≤ ₹12,500 if taxable ≤ ₹5L
+- Deductions: 80C (max ₹1.5L, EPF auto-included), 80D, HRA
+**Both:** Surcharge 10%/15%/25% (new: capped 25%) · 4% H&E Cess
+
+---
+
+## Deploy
 
 ```bash
 git add .
@@ -273,13 +335,12 @@ GitHub Actions auto-builds and deploys to https://usv1998.github.io/family-finan
 
 ---
 
-## Session History Summary
+## Version History
 
-This app was built in a single Claude.ai conversation covering:
-- Full FY26 tax computation from payslips (Microsoft + Nvidia)
-- FY27 projected tax computation with RSU/ESPP/bonus modeling
-- Monthly take-home simulation with front-loaded TDS logic
-- Singapore trip savings plan (Gold ETF, ₹5L by Jan 2027)
-- Family function savings plan (₹4L by Oct 25, 2026)
-- Investment allocation: 70% Nifty 50 / 30% Midcap 150
-- Household combined cashflow showing ₹1.12Cr wealth creation in FY27
+| Version | Key Changes |
+|---------|-------------|
+| v1.0 | Initial deploy — income tracker, RSU vest events, investments tab |
+| v1.1 | ESPP label fix, Selva Sep bonus double-count fix, Akshaya EPF step-up fix |
+| v1.2 | Full modular refactor (src/lib + src/components), Expenses tab, Portfolio tab, live market data, current month highlighting, RSU grant schedule modelling, CSV export (all tabs), multi-year income growth chart (Recharts, code-split) |
+| v1.3 | Savings rate chart, RSU appreciation tracking (unrealized gain columns), Income Projection chart |
+| v1.4 | Tax estimation tab (Old vs New regime, FY2025-26 slabs, per-person, auto-fills from data) |
