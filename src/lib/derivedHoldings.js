@@ -16,6 +16,18 @@
 import { PERSONS, PERSON_STOCK, MONTHS } from "./constants";
 import { getEsspINR } from "./formatters";
 
+// ── date guard ─────────────────────────────────────────────────────────────────
+
+// Only include a derived holding if its date falls in the current month or earlier.
+// Computed once on module load; refreshes on next full page load.
+const _now = new Date();
+const _todayYM = _now.getFullYear() * 100 + _now.getMonth(); // e.g. 202604 for April 2026
+
+function atOrBeforeNow(dateStr) {
+  const d = new Date(dateStr);
+  return d.getFullYear() * 100 + d.getMonth() <= _todayYM;
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 /** Convert FY string + month index (0=Apr … 11=Mar) to "YYYY-MM-15" date string. */
@@ -33,6 +45,7 @@ function deriveRSULots(rsuData) {
   const lots = [];
   for (const fy of Object.keys(rsuData || {})) {
     for (const ev of rsuData[fy] || []) {
+      if (!atOrBeforeNow(ev.vest_date)) continue;   // future vest — skip
       const netUnits = (ev.units_vested || 0) - (ev.tax_withheld_units || 0);
       if (netUnits <= 0) continue;
       lots.push({
@@ -63,9 +76,10 @@ function deriveESPPLots(incomeData) {
     for (const person of PERSONS) {
       const months = incomeData[fy]?.[person] || {};
       for (const [miStr, d] of Object.entries(months)) {
+        const mi = Number(miStr);
+        if (!atOrBeforeNow(miToDate(fy, mi))) continue;  // future month — skip
         const shares = Number(d.espp_shares || 0);
         if (!shares) continue;
-        const mi       = Number(miStr);
         const priceUSD = Number(d.espp_price_usd || 0);
         const rate     = Number(d.espp_usd_inr   || 0);
         lots.push({
@@ -108,7 +122,8 @@ function deriveEPF(incomeData, investmentsData) {
     let totalContrib = 0;
     for (const fy of Object.keys(incomeData || {}).filter(k => k.startsWith("FY"))) {
       const months = incomeData[fy]?.[person] || {};
-      for (const d of Object.values(months)) {
+      for (const [miStr, d] of Object.entries(months)) {
+        if (!atOrBeforeNow(miToDate(fy, Number(miStr)))) continue;  // future month
         totalContrib += Number(d.epf || 0) * 2;
       }
     }
@@ -132,7 +147,8 @@ function deriveBabyFund(investmentsData) {
   for (const fy of Object.keys(investmentsData || {}).filter(k => k.startsWith("FY"))) {
     const bf = investmentsData[fy]?.babyFund;
     if (!bf) continue;
-    for (const v of Object.values(bf.months || {})) {
+    for (const [miStr, v] of Object.entries(bf.months || {})) {
+      if (!atOrBeforeNow(miToDate(fy, Number(miStr)))) continue;  // future month
       total += Number(v || 0);
     }
   }

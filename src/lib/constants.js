@@ -5,7 +5,7 @@ export const STOCKS      = ["MSFT","NVDA"];
 export const EMPLOYER    = { Selva:"Microsoft", Akshaya:"Nvidia" };
 export const PERSON_STOCK= { Selva:"MSFT", Akshaya:"NVDA" };
 export const LIVE_DEFAULTS = { MSFT:428.50, NVDA:136.20, USDINR:85.42 };
-export const STORAGE_KEY = "family-finance-v2";
+export const STORAGE_KEY = "family-finance-v3";
 
 export const TABS = [
   { id:"income",      label:"Income",      active:true },

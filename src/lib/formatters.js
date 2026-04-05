@@ -32,7 +32,7 @@ export const getCurrentMonthIdx = () => {
 
 export const getFYOptions = () => {
   const opts = [];
-  for (let y = 2025; y <= 2028; y++) opts.push(`FY${y}-${(y+1).toString().slice(2)}`);
+  for (let y = 2026; y <= 2028; y++) opts.push(`FY${y}-${(y+1).toString().slice(2)}`);
   return opts;
 };
 
