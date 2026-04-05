@@ -18,18 +18,27 @@ export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDele
 
   const exportRSU = (allFYs) => {
     const events = allFYs ? allEvents : (rsuData[fy] || []);
-    const headers = ["Person","Stock","Vest Date","FY","Units Vested","Tax Withheld","Net Units","Price USD","USD/INR","Gross INR","Net INR","Grant ID"];
+    const hasLive = liveData && (liveData.MSFT || liveData.NVDA);
+    const liveUSDINR = liveData?.USDINR || 85;
+    const headers = ["Person","Stock","Vest Date","FY","Units Vested","Tax Withheld","Net Units",
+      "Price USD","USD/INR","Net INR",
+      ...(hasLive ? ["Current Value INR","Gain INR","Gain %"] : []),
+      "Grant ID"];
     const rows = events
       .slice().sort((a,b) => new Date(a.vest_date)-new Date(b.vest_date))
       .map(e => {
-        const gross = e.units_vested * e.stock_price_usd * e.usd_inr_rate;
-        const net   = (e.units_vested - (e.tax_withheld_units||0)) * e.stock_price_usd * e.usd_inr_rate;
+        const netUnits = e.units_vested - (e.tax_withheld_units||0);
+        const netINR   = netUnits * e.stock_price_usd * e.usd_inr_rate;
+        const livePrice = hasLive ? (liveData[e.stock] || 0) : 0;
+        const nowINR   = hasLive ? netUnits * livePrice * liveUSDINR : null;
+        const gain     = nowINR !== null ? nowINR - netINR : null;
+        const gainPct  = netINR > 0 && gain !== null ? (gain/netINR*100).toFixed(1) : "";
         return [e.person, e.stock,
           new Date(e.vest_date).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}),
-          e.fy, e.units_vested, e.tax_withheld_units||0,
-          e.units_vested-(e.tax_withheld_units||0),
-          e.stock_price_usd, e.usd_inr_rate,
-          Math.round(gross), Math.round(net), e.grant_id||""];
+          e.fy, e.units_vested, e.tax_withheld_units||0, netUnits,
+          e.stock_price_usd, e.usd_inr_rate, Math.round(netINR),
+          ...(hasLive ? [Math.round(nowINR||0), Math.round(gain||0), gainPct] : []),
+          e.grant_id||""];
       });
     downloadCSV(`rsu_${allFYs?"all":fy}.csv`, [headers, ...rows]);
   };
@@ -103,7 +112,7 @@ export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDele
             <button onClick={()=>exportRSU(true)}  style={{ padding:"7px 13px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", cursor:"pointer", fontWeight:600 }}>Export All FYs ↓</button>
           </div>
           </div>
-          <RsuTable events={rsuData[fy]||[]} onDelete={onDelete} filterPerson={rsuFilterPerson} filterStock={rsuFilterStock}/>
+          <RsuTable events={rsuData[fy]||[]} onDelete={onDelete} filterPerson={rsuFilterPerson} filterStock={rsuFilterStock} liveData={liveData}/>
         </div>
       )}
 
