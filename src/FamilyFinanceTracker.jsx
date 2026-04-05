@@ -5,6 +5,7 @@ import { T } from "./lib/theme";
 import { getCurrentFY, getFYOptions } from "./lib/formatters";
 import { loadData, saveData } from "./lib/storage";
 import { SEED_DATA } from "./lib/seed";
+import { fetchLiveData } from "./lib/marketData";
 
 import LiveStrip from "./components/LiveStrip";
 import LoginScreen from "./components/LoginScreen";
@@ -23,12 +24,36 @@ export default function FamilyFinanceTracker() {
   const [expensesData,   setExpensesData]   = useState({});
   const [portfolioData,  setPortfolioData]  = useState({});
   const [liveData,       setLiveData]       = useState(LIVE_DEFAULTS);
+  const [refreshing,     setRefreshing]     = useState(false);
   const [loading,        setLoading]        = useState(true);
   const [user,           setUser]           = useState(null);
   const [authReady,      setAuthReady]      = useState(!supabase); // true immediately if no supabase
   const [syncing,        setSyncing]        = useState(false);
   const saveRef = useRef(null);
   const userRef = useRef(null);
+
+  const refreshMarket = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const result = await fetchLiveData();
+      setLiveData(prev => ({
+        MSFT:    result.MSFT    ?? prev.MSFT,
+        NVDA:    result.NVDA    ?? prev.NVDA,
+        USDINR:  result.USDINR  ?? prev.USDINR,
+        fetchedAt: result.fetchedAt,
+        error:   result.error,
+        partial: result.partial,
+      }));
+    } catch (_) { /* leave previous data intact */ }
+    setRefreshing(false);
+  }, []);
+
+  // Fetch on mount + every 15 minutes
+  useEffect(() => {
+    refreshMarket();
+    const id = setInterval(refreshMarket, 15 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [refreshMarket]);
 
   // Auth state listener
   useEffect(()=>{
@@ -163,7 +188,7 @@ export default function FamilyFinanceTracker() {
               </div>
             </div>
             <div style={{ display:"flex", gap:"10px", alignItems:"center", flexWrap:"wrap" }}>
-              <LiveStrip liveData={liveData}/>
+              <LiveStrip liveData={liveData} onRefresh={refreshMarket} refreshing={refreshing}/>
               {supabase && (
                 <div style={{ display:"flex", alignItems:"center", gap:"6px", fontSize:"11px", color:syncing?T.amber:T.accent, fontWeight:600 }}>
                   <span style={{ width:"6px", height:"6px", borderRadius:"50%", background:syncing?T.amber:T.accent, display:"inline-block", animation:syncing?"pulse 1s infinite":"none" }}/>
