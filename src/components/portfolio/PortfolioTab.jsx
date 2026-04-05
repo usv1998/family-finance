@@ -77,6 +77,12 @@ function OverviewView({ enriched, totalNW }) {
 
   const portfolioRate = useMemo(() => portfolioXIRR(enriched), [enriched]);
 
+  const { totalGain, gainPct } = useMemo(() => {
+    const totalCost = enriched.reduce((s, h) => s + (h.costBasisINR || h.balance || 0), 0);
+    const gain = totalNW - totalCost;
+    return { totalGain: gain, gainPct: totalCost > 0 ? gain / totalCost * 100 : null };
+  }, [enriched, totalNW]);
+
   const MetricCard = ({ title, value, sub, col }) => (
     <div style={{ background:T.card, borderRadius:"14px", border:`1px solid ${T.border}`, padding:"20px" }}>
       <div style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", marginBottom:"8px" }}>
@@ -100,6 +106,13 @@ function OverviewView({ enriched, totalNW }) {
             value={fmtXIRR(portfolioRate)}
             sub="annualised return"
             col={portfolioRate >= 0 ? T.accent : T.red}/>
+        )}
+        {gainPct !== null && (
+          <MetricCard
+            title="TOTAL GAIN"
+            value={`${totalGain >= 0 ? "+" : ""}${fmtL(Math.abs(totalGain))}`}
+            sub={`${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}% on invested`}
+            col={totalGain >= 0 ? T.accent : T.red}/>
         )}
         {Object.entries(personData).filter(([, v]) => v > 0).map(([person, val]) => (
           <MetricCard
@@ -203,6 +216,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance }) 
               const typeKey  = `type-${cat}-${type}`;
               const typeOpen = expanded[typeKey] !== false;
               const typeVal  = holdings.reduce((s, h) => s + (h.currentValue || 0), 0);
+              const typeXirr = portfolioXIRR(holdings);
               return (
                 <div key={type}>
                   <div onClick={() => toggle(typeKey)}
@@ -213,6 +227,12 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance }) 
                       {TYPE_LABELS[type] || type}
                     </span>
                     <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                      {typeXirr !== null && (
+                        <span style={{ fontSize:"10px", fontWeight:700,
+                          color:typeXirr>=0?T.accent:T.red }}>
+                          XIRR {fmtXIRR(typeXirr)}
+                        </span>
+                      )}
                       <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px",
                         color:T.textDim }}>{fmtL(typeVal)}</span>
                       <span style={{ color:T.textMuted, fontSize:"12px" }}>{typeOpen?"▲":"▼"}</span>
@@ -292,7 +312,10 @@ export default function PortfolioTab({
   const enriched = useMemo(() => allHoldings.map(h => ({
     ...h,
     currentValue: getHoldingValue(h, priceMap, usdinr),
-    category:     CATEGORY_MAP[h.type] || "Other",
+    // Baby Fund and Debt Funds are Debt regardless of their mf type
+    category: (h.source === "babyFund" || h.source === "debtFund")
+      ? "Debt"
+      : (CATEGORY_MAP[h.type] || "Other"),
   })), [allHoldings, priceMap, usdinr]);
 
   const totalNW = enriched.reduce((s, h) => s + (h.currentValue || 0), 0);
