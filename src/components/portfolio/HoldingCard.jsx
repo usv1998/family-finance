@@ -2,6 +2,7 @@ import { useState } from "react";
 import { T } from "../../lib/theme";
 import { fmtINR, fmtUSD } from "../../lib/formatters";
 import { getCurrentValueINR, getGainINR, calcFDValue } from "../../lib/priceService";
+import { holdingXIRR } from "../../lib/xirr";
 import { TYPE_META } from "./AddHoldingForm";
 
 function Badge({ label, color }) {
@@ -19,6 +20,7 @@ export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpd
   const gain         = getGainINR(holding, currentValue);
   const gainPct      = gain !== null && holding.costBasisINR > 0
     ? (gain / holding.costBasisINR) * 100 : null;
+  const xirrRate     = holdingXIRR(holding, currentValue);
 
   const personColor  = holding.person === "Selva" ? T.selva : holding.person === "Akshaya" ? T.akshaya : T.purple;
   const typeColor    = TYPE_META[holding.type]?.color || T.textDim;
@@ -41,6 +43,9 @@ export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpd
         <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"6px" }}>
           <Badge label={holding.person} color={personColor}/>
           <Badge label={typeLabel} color={typeColor}/>
+          {holding.derived && (
+            <Badge label={holding.source === "rsu" ? "RSU" : holding.source === "espp" ? "ESPP" : "AUTO"} color={T.purple}/>
+          )}
           {holding.type === "fd" && holding.maturityDate && (
             <Badge label={`Matures ${new Date(holding.maturityDate).toLocaleDateString("en-IN",{month:"short",year:"numeric"})}`} color={T.textMuted}/>
           )}
@@ -85,6 +90,21 @@ export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpd
           )}
         </div>
 
+        {holding.acquisitionDate && (
+          <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"4px" }}>
+            acquired {new Date(holding.acquisitionDate).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}
+            {holding.acquisitionPrice && holding.acquisitionCurrency && (
+              <span style={{ marginLeft:"6px" }}>
+                @ {holding.acquisitionCurrency === "USD"
+                  ? `$${holding.acquisitionPrice}`
+                  : `₹${Number(holding.acquisitionPrice).toLocaleString("en-IN")}`}
+                {holding.acquisitionCurrency === "USD" && holding.acquisitionUSDINR && (
+                  <span style={{ color:T.textMuted }}> × ₹{holding.acquisitionUSDINR}</span>
+                )}
+              </span>
+            )}
+          </div>
+        )}
         {holding.notes && (
           <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"4px", fontStyle:"italic" }}>
             {holding.notes}
@@ -153,11 +173,26 @@ export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpd
           <div style={{ fontSize:"10px", color:T.textMuted }}>fetching price…</div>
         )}
 
-        {/* Delete */}
-        <button onClick={() => { if(window.confirm("Remove this holding?")) onDelete(holding.id); }}
-          style={{ background:"none", border:"none", color:T.red, cursor:"pointer",
-            fontSize:"13px", opacity:0.5, marginTop:"4px", padding:"2px 4px" }}
-          title="Remove holding">✕ Remove</button>
+        {/* XIRR */}
+        {xirrRate !== null && isFinite(xirrRate) && (
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"11px", fontWeight:700,
+            color:xirrRate>=0?T.accent:T.red, marginTop:"2px" }}>
+            XIRR {xirrRate>=0?"+":""}{(xirrRate*100).toFixed(1)}% p.a.
+          </div>
+        )}
+
+        {/* Delete — only for manually added holdings */}
+        {!holding.derived && (
+          <button onClick={() => { if(window.confirm("Remove this holding?")) onDelete(holding.id); }}
+            style={{ background:"none", border:"none", color:T.red, cursor:"pointer",
+              fontSize:"13px", opacity:0.5, marginTop:"4px", padding:"2px 4px" }}
+            title="Remove holding">✕ Remove</button>
+        )}
+        {holding.derived && (
+          <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"4px", fontStyle:"italic" }}>
+            auto-computed
+          </div>
+        )}
       </div>
     </div>
   );

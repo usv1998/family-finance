@@ -8,10 +8,9 @@ export const LIVE_DEFAULTS = { MSFT:428.50, NVDA:136.20, USDINR:85.42 };
 export const STORAGE_KEY = "family-finance-v2";
 
 export const TABS = [
-  { id:"income",      label:"Income",       active:true  },
-  { id:"rsu",         label:"RSU Tracker",  active:true  },
-  { id:"investments", label:"Investments",  active:true  },
-  { id:"expenses",    label:"Expenses",     active:true  },
-  { id:"portfolio",   label:"Net Worth",    active:true  },
-  { id:"tax",         label:"Tax",          active:true  },
+  { id:"income",      label:"Income",      active:true },
+  { id:"investments", label:"Investments", active:true },
+  { id:"expenses",    label:"Expenses",    active:true },
+  { id:"portfolio",   label:"Portfolio",   active:true },
+  { id:"tax",         label:"Tax",         active:true },
 ];

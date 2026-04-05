@@ -1,0 +1,187 @@
+/**
+ * Compute read-only "derived" holdings from stored income / RSU / investments data.
+ *
+ * Derived holdings are always in sync with the underlying data — they are
+ * never stored in holdingsData and must NOT be saved to storage.
+ *
+ * Sources:
+ *   rsuData        → RSU vest lots (one per vest event, net shares after tax)
+ *   incomeData     → ESPP lots     (one per month with espp_shares > 0)
+ *   incomeData +   → EPF balance   (one per person: opening + cumulative monthly × 2)
+ *   investmentsData
+ *   investmentsData → Baby Fund    (total contributed, treated as an equity SIP)
+ *   investmentsData → Debt Funds   (each fund entry)
+ */
+
+import { PERSONS, PERSON_STOCK, MONTHS } from "./constants";
+import { getEsspINR } from "./formatters";
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+/** Convert FY string + month index (0=Apr … 11=Mar) to "YYYY-MM-15" date string. */
+function miToDate(fy, mi) {
+  const yr = parseInt(fy.match(/FY(\d{4})/)?.[1] || "2026");
+  // Apr=0 → calMonth=4, ..., Dec=8 → calMonth=12, Jan=9 → calMonth=1, ..., Mar=11 → calMonth=3
+  const calMonth = mi < 9 ? mi + 4 : mi - 8;
+  const calYear  = yr + (mi >= 9 ? 1 : 0);
+  return `${calYear}-${String(calMonth).padStart(2, "0")}-15`;
+}
+
+// ── RSU lots ───────────────────────────────────────────────────────────────
+
+function deriveRSULots(rsuData) {
+  const lots = [];
+  for (const fy of Object.keys(rsuData || {})) {
+    for (const ev of rsuData[fy] || []) {
+      const netUnits = (ev.units_vested || 0) - (ev.tax_withheld_units || 0);
+      if (netUnits <= 0) continue;
+      lots.push({
+        id:                  `derived-rsu-${ev.id}`,
+        type:                "us_stock",
+        person:              ev.person,
+        name:                `${ev.stock} RSU ${MONTHS[ev.month_idx] || ""} ${fy.replace("FY", "")}`,
+        symbol:              ev.stock,
+        quantity:            netUnits,
+        costBasisINR:        netUnits * (ev.stock_price_usd || 0) * (ev.usd_inr_rate || 0),
+        acquisitionDate:     ev.vest_date,
+        acquisitionPrice:    ev.stock_price_usd,
+        acquisitionCurrency: "USD",
+        acquisitionUSDINR:   ev.usd_inr_rate,
+        derived:             true,
+        source:              "rsu",
+      });
+    }
+  }
+  return lots;
+}
+
+// ── ESPP lots ──────────────────────────────────────────────────────────────
+
+function deriveESPPLots(incomeData) {
+  const lots = [];
+  for (const fy of Object.keys(incomeData || {}).filter(k => k.startsWith("FY"))) {
+    for (const person of PERSONS) {
+      const months = incomeData[fy]?.[person] || {};
+      for (const [miStr, d] of Object.entries(months)) {
+        const shares = Number(d.espp_shares || 0);
+        if (!shares) continue;
+        const mi       = Number(miStr);
+        const priceUSD = Number(d.espp_price_usd || 0);
+        const rate     = Number(d.espp_usd_inr   || 0);
+        lots.push({
+          id:                  `derived-espp-${person}-${fy}-${mi}`,
+          type:                "us_stock",
+          person,
+          name:                `${PERSON_STOCK[person]} ESPP ${MONTHS[mi] || ""} ${fy.replace("FY", "")}`,
+          symbol:              PERSON_STOCK[person],
+          quantity:            shares,
+          costBasisINR:        getEsspINR(d),
+          acquisitionDate:     miToDate(fy, mi),
+          acquisitionPrice:    priceUSD,
+          acquisitionCurrency: "USD",
+          acquisitionUSDINR:   rate,
+          derived:             true,
+          source:              "espp",
+        });
+      }
+    }
+  }
+  return lots;
+}
+
+// ── EPF ────────────────────────────────────────────────────────────────────
+
+/**
+ * EPF balance = opening (from the earliest FY's investmentsData) + cumulative monthly × 2
+ * (monthly epf in incomeData = employee contribution; employer matches 1:1)
+ */
+function deriveEPF(incomeData, investmentsData) {
+  return PERSONS.map(person => {
+    // Opening balance: use the earliest FY that has epfOpening for this person
+    let opening = 0;
+    for (const fy of Object.keys(investmentsData || {}).filter(k => k.startsWith("FY")).sort()) {
+      const val = investmentsData[fy]?.epfOpening?.[person];
+      if (val != null) { opening = val; break; }
+    }
+
+    // Sum all monthly EPF contributions (employee share; employer = same, so ×2)
+    let totalContrib = 0;
+    for (const fy of Object.keys(incomeData || {}).filter(k => k.startsWith("FY"))) {
+      const months = incomeData[fy]?.[person] || {};
+      for (const d of Object.values(months)) {
+        totalContrib += Number(d.epf || 0) * 2;
+      }
+    }
+
+    return {
+      id:      `derived-epf-${person}`,
+      type:    "epf",
+      person,
+      name:    `EPF — ${person}`,
+      balance: opening + totalContrib,
+      derived: true,
+      source:  "epf",
+    };
+  });
+}
+
+// ── Baby Fund ──────────────────────────────────────────────────────────────
+
+function deriveBabyFund(investmentsData) {
+  let total = 0;
+  for (const fy of Object.keys(investmentsData || {}).filter(k => k.startsWith("FY"))) {
+    const bf = investmentsData[fy]?.babyFund;
+    if (!bf) continue;
+    for (const v of Object.values(bf.months || {})) {
+      total += Number(v || 0);
+    }
+  }
+  if (!total) return [];
+  return [{
+    id:           "derived-babyfund",
+    type:         "mf",
+    person:       "Joint",
+    name:         "Baby Education Fund",
+    units:        0,        // no NAV tracking — show cost basis as value
+    costBasisINR: total,
+    derived:      true,
+    source:       "babyFund",
+  }];
+}
+
+// ── Debt Funds ─────────────────────────────────────────────────────────────
+
+function deriveDebtFunds(investmentsData) {
+  const funds = [];
+  for (const fy of Object.keys(investmentsData || {}).filter(k => k.startsWith("FY"))) {
+    for (const fund of investmentsData[fy]?.debtFunds || []) {
+      funds.push({
+        id:           `derived-debtfund-${fund.id}`,
+        type:         "mf",
+        person:       "Joint",
+        name:         fund.name || "Debt Fund",
+        units:        0,
+        costBasisINR: Number(fund.amount || 0),
+        derived:      true,
+        source:       "debtFund",
+      });
+    }
+  }
+  return funds;
+}
+
+// ── Main export ────────────────────────────────────────────────────────────
+
+/**
+ * Returns a flat array of all derived holdings.
+ * RSU lots sorted newest-first within each person.
+ */
+export function getDerivedHoldings(rsuData, incomeData, investmentsData) {
+  return [
+    ...deriveRSULots(rsuData),
+    ...deriveESPPLots(incomeData),
+    ...deriveEPF(incomeData, investmentsData),
+    ...deriveBabyFund(investmentsData),
+    ...deriveDebtFunds(investmentsData),
+  ];
+}

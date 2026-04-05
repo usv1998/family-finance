@@ -10,10 +10,9 @@ import { fetchLiveData } from "./lib/marketData";
 import LiveStrip from "./components/LiveStrip";
 import LoginScreen from "./components/LoginScreen";
 import IncomeTab from "./components/income/IncomeTab";
-import RsuTab from "./components/rsu/RsuTab";
 import InvestmentsTab from "./components/investments/InvestmentsTab";
 import ExpensesTab from "./components/expenses/ExpensesTab";
-import NetWorthTab from "./components/portfolio/NetWorthTab";
+import PortfolioTab from "./components/portfolio/PortfolioTab";
 import TaxTab from "./components/tax/TaxTab";
 
 export default function FamilyFinanceTracker() {
@@ -272,18 +271,6 @@ export default function FamilyFinanceTracker() {
             onUpdateIncome={updateMonthlyIncome}
           />
         )}
-        {activeTab==="rsu"&&(
-          <RsuTab
-            rsuData={rsuData}
-            rsuGrants={rsuGrants}
-            fy={fy}
-            liveData={liveData}
-            onAdd={addRsuEvent}
-            onDelete={deleteRsuEvent}
-            onAddGrant={addRsuGrant}
-            onDeleteGrant={deleteRsuGrant}
-          />
-        )}
         {activeTab==="investments"&&(
           <InvestmentsTab
             incomeData={incomeData}
@@ -297,12 +284,21 @@ export default function FamilyFinanceTracker() {
           <ExpensesTab expensesData={expensesData} fy={fy} onUpdate={updateExpenses}/>
         )}
         {activeTab==="portfolio"&&(
-          <NetWorthTab
-            holdings={holdingsData}
+          <PortfolioTab
+            holdingsData={holdingsData}
+            rsuData={rsuData}
+            incomeData={incomeData}
+            investmentsData={investmentsData}
+            rsuGrants={rsuGrants}
             liveData={liveData}
+            fy={fy}
             onAddHolding={addHolding}
             onDeleteHolding={deleteHolding}
             onUpdateHolding={updateHolding}
+            onAddRsuEvent={addRsuEvent}
+            onDeleteRsuEvent={deleteRsuEvent}
+            onAddRsuGrant={addRsuGrant}
+            onDeleteRsuGrant={deleteRsuGrant}
           />
         )}
         {activeTab==="tax"&&(
@@ -311,7 +307,7 @@ export default function FamilyFinanceTracker() {
       </div>
 
       <div style={{ padding:"16px 20px", borderTop:`1px solid ${T.border}`, textAlign:"center", color:T.textMuted, fontSize:"11px" }}>
-        Family Finance Tracker v1.4 · FY2025-26 onwards · All-time corpus · Data synced across devices
+        Family Finance Tracker v1.6 · Portfolio: auto-derived + XIRR · Data synced across devices
       </div>
     </div>
   );

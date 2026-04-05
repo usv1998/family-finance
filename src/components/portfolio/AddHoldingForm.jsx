@@ -3,6 +3,7 @@ import { T } from "../../lib/theme";
 import { genId } from "../../lib/formatters";
 import { PERSONS } from "../../lib/constants";
 import { searchMF } from "../../lib/priceService";
+import { fetchHistoricalUSDINR } from "../../lib/historicalFX";
 
 export const TYPE_META = {
   us_stock: { label: "US Stock",       color: T.blue   },
@@ -18,6 +19,7 @@ const EMPTY = {
   quantity:"", costBasisINR:"", schemeCode:"", units:"",
   principal:"", interestRate:"", startDate:"", maturityDate:"",
   balance:"", notes:"",
+  acquisitionDate:"", acquisitionPrice:"", acquisitionUSDINR:"",
 };
 
 const inp = {
@@ -36,9 +38,20 @@ export default function AddHoldingForm({ onAdd, onClose }) {
   const [mfResults, setMfResults] = useState([]);
   const [mfSearching, setMfSearching] = useState(false);
   const [mfSelected, setMfSelected]   = useState(null);
+  const [fxFetching, setFxFetching]   = useState(false);
   const timerRef = useRef(null);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Auto-fetch USD/INR rate when acquisition date is entered for US stocks
+  const handleAcqDate = async (dateStr) => {
+    set("acquisitionDate", dateStr);
+    if (!dateStr || form.type !== "us_stock") return;
+    setFxFetching(true);
+    const rate = await fetchHistoricalUSDINR(dateStr);
+    if (rate) set("acquisitionUSDINR", rate.toFixed(2));
+    setFxFetching(false);
+  };
 
   const handleMFSearch = (q) => {
     setMfQuery(q);
@@ -65,6 +78,17 @@ export default function AddHoldingForm({ onAdd, onClose }) {
   const handleSubmit = () => {
     const h = { id: genId(), type: form.type, person: form.person,
       name: form.name, notes: form.notes, addedAt: new Date().toISOString() };
+    // Acquisition info (applies to stocks + MFs)
+    if (form.acquisitionDate) {
+      h.acquisitionDate = form.acquisitionDate;
+      if (form.acquisitionPrice) {
+        h.acquisitionPrice    = Number(form.acquisitionPrice);
+        h.acquisitionCurrency = form.type === "us_stock" ? "USD" : "INR";
+        if (form.type === "us_stock" && form.acquisitionUSDINR) {
+          h.acquisitionUSDINR = Number(form.acquisitionUSDINR);
+        }
+      }
+    }
     switch (form.type) {
       case "us_stock":
       case "in_stock":
@@ -153,6 +177,25 @@ export default function AddHoldingForm({ onAdd, onClose }) {
               <input type="number" style={inp} value={form.costBasisINR} onChange={e=>set("costBasisINR",e.target.value)} placeholder="350000"/>
             </div>
           </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px" }}>
+            <div>
+              {label("PURCHASE DATE (for XIRR)")}
+              <input type="date" style={inp} value={form.acquisitionDate} onChange={e=>handleAcqDate(e.target.value)}/>
+            </div>
+            <div>
+              {label("PRICE PER SHARE (USD)")}
+              <input type="number" style={inp} value={form.acquisitionPrice} onChange={e=>set("acquisitionPrice",e.target.value)} placeholder="420"/>
+            </div>
+            <div style={{ position:"relative" }}>
+              {label("USD/INR ON THAT DATE")}
+              <input type="number" style={inp} value={form.acquisitionUSDINR} onChange={e=>set("acquisitionUSDINR",e.target.value)} placeholder="94.2"/>
+              {fxFetching && (
+                <span style={{ position:"absolute", right:"10px", top:"30px", fontSize:"10px", color:T.textMuted }}>
+                  fetching…
+                </span>
+              )}
+            </div>
+          </div>
         </>)}
 
         {/* Indian Stock */}
@@ -167,7 +210,7 @@ export default function AddHoldingForm({ onAdd, onClose }) {
               <input style={inp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Reliance Industries"/>
             </div>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px" }}>
             <div>
               {label("QUANTITY (shares)")}
               <input type="number" style={inp} value={form.quantity} onChange={e=>set("quantity",e.target.value)} placeholder="50"/>
@@ -175,6 +218,10 @@ export default function AddHoldingForm({ onAdd, onClose }) {
             <div>
               {label("TOTAL COST BASIS (₹)")}
               <input type="number" style={inp} value={form.costBasisINR} onChange={e=>set("costBasisINR",e.target.value)} placeholder="150000"/>
+            </div>
+            <div>
+              {label("PURCHASE DATE (for XIRR)")}
+              <input type="date" style={inp} value={form.acquisitionDate} onChange={e=>set("acquisitionDate",e.target.value)}/>
             </div>
           </div>
         </>)}
@@ -215,7 +262,7 @@ export default function AddHoldingForm({ onAdd, onClose }) {
               <span style={{ color:T.textMuted, marginLeft:"8px" }}>Code: {mfSelected.schemeCode}</span>
             </div>
           )}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px" }}>
             <div>
               {label("UNITS HELD")}
               <input type="number" style={inp} value={form.units} onChange={e=>set("units",e.target.value)} placeholder="1234.567"/>
@@ -223,6 +270,10 @@ export default function AddHoldingForm({ onAdd, onClose }) {
             <div>
               {label("TOTAL INVESTED (₹)")}
               <input type="number" style={inp} value={form.costBasisINR} onChange={e=>set("costBasisINR",e.target.value)} placeholder="500000"/>
+            </div>
+            <div>
+              {label("FIRST SIP DATE (for XIRR)")}
+              <input type="date" style={inp} value={form.acquisitionDate} onChange={e=>set("acquisitionDate",e.target.value)}/>
             </div>
           </div>
         </>)}
