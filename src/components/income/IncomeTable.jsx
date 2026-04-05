@@ -2,7 +2,7 @@ import { T } from "../../lib/theme";
 import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { MONTHS, PERSONS } from "../../lib/constants";
 
-export default function IncomeTable({ incomeData, rsuData, fy, viewMode, highlightMonth }) {
+export default function IncomeTable({ incomeData, rsuData, fy, viewMode, highlightMonth, onSelectMonth }) {
   const persons = viewMode==="combined" ? PERSONS : [viewMode];
   const getMD        = (p,mi) => incomeData?.[fy]?.[p]?.[mi] || {};
   const getRSUShares = (p,mi) => (rsuData?.[fy]||[]).filter(r=>r.person===p&&r.month_idx===mi).reduce((s,r)=>s+(r.units_vested-(r.tax_withheld_units||0)),0);
@@ -34,7 +34,7 @@ export default function IncomeTable({ incomeData, rsuData, fy, viewMode, highlig
         <thead>
           <tr style={{ background:T.card }}>
             <th style={{ padding:"12px 16px", textAlign:"left", color:T.textDim, fontSize:"11px", fontWeight:700, letterSpacing:"0.5px", borderBottom:`1px solid ${T.border}`, position:"sticky", left:0, background:T.card, zIndex:1 }}>COMPONENT</th>
-            {MONTHS.map((m,mi)=><th key={m} style={{ padding:"12px 8px", textAlign:"right", color:mi===highlightMonth?T.accent:T.textDim, fontSize:"11px", fontWeight:700, borderBottom:`1px solid ${T.border}`, background:mi===highlightMonth?T.accentBg:"transparent" }}>{m.toUpperCase()}{mi===highlightMonth&&<span style={{ display:"block", fontSize:"9px", color:T.accent, letterSpacing:"0.5px" }}>NOW</span>}</th>)}
+            {MONTHS.map((m,mi)=><th key={m} onClick={()=>onSelectMonth?.(mi)} style={{ padding:"12px 8px", textAlign:"right", color:mi===highlightMonth?T.accent:T.textDim, fontSize:"11px", fontWeight:700, borderBottom:`1px solid ${T.border}`, background:mi===highlightMonth?T.accentBg:"transparent", cursor:onSelectMonth?"pointer":"default" }}>{m.toUpperCase()}{mi===highlightMonth&&<span style={{ display:"block", fontSize:"9px", color:T.accent, letterSpacing:"0.5px" }}>NOW</span>}</th>)}
             <th style={{ padding:"12px 16px", textAlign:"right", color:T.accent, fontSize:"11px", fontWeight:700, borderBottom:`1px solid ${T.border}` }}>FY TOTAL</th>
           </tr>
         </thead>

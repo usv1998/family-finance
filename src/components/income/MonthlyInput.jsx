@@ -1,6 +1,4 @@
 import { T } from "../../lib/theme";
-import { getEsspINR, fmtINR } from "../../lib/formatters";
-
 export default function MonthlyInput({ data, onChange, person }) {
   const isSelva = person === "Selva";
   const fields = [
@@ -14,8 +12,6 @@ export default function MonthlyInput({ data, onChange, person }) {
   const inp = { width:"100%", padding:"10px 12px", background:T.bg, border:`1px solid ${T.border}`,
     borderRadius:"8px", color:T.text, fontSize:"14px", fontFamily:"'JetBrains Mono',monospace",
     outline:"none", boxSizing:"border-box" };
-
-  const esppINR = getEsspINR(data);
 
   return (
     <div>
@@ -32,11 +28,6 @@ export default function MonthlyInput({ data, onChange, person }) {
           </div>
         ))}
       </div>
-      {esppINR > 0 && (
-        <div style={{ marginTop:"8px", fontSize:"11px", color:T.teal, fontWeight:600 }}>
-          ESPP value ≈ {fmtINR(esppINR)}
-        </div>
-      )}
     </div>
   );
 }

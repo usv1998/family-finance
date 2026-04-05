@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, useRef, lazy, Suspense } from "react";
 import { T } from "../../lib/theme";
 import { getCurrentFY, getCurrentMonthIdx, getEsspINR } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER } from "../../lib/constants";
@@ -21,6 +21,7 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
   const [viewMode,   setViewMode]   = useState("combined");
   const [editMonth,  setEditMonth]  = useState(null);
   const [editPerson, setEditPerson] = useState("Selva");
+  const editRef = useRef(null);
   const highlightMonth = fy === CURR_FY ? CURR_MI : null;
 
   const exportCSV = () => {
@@ -75,8 +76,9 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
       {/* ── Table section ── */}
       {section === "table" && (
         <>
-          <IncomeTable incomeData={incomeData} rsuData={rsuData} fy={fy} viewMode={viewMode} highlightMonth={highlightMonth}/>
-          <div style={{ marginTop:"24px" }}>
+          <IncomeTable incomeData={incomeData} rsuData={rsuData} fy={fy} viewMode={viewMode} highlightMonth={highlightMonth}
+            onSelectMonth={mi=>{ setEditMonth(mi); setTimeout(()=>editRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),50); }}/>
+          <div ref={editRef} style={{ marginTop:"24px" }}>
             <h3 style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"12px" }}>Enter Monthly Income</h3>
             <div style={{ display:"flex", gap:"8px", flexWrap:"wrap", marginBottom:"16px" }}>
               <select value={editPerson} onChange={e=>setEditPerson(e.target.value)} style={selectStyle}>
