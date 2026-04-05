@@ -5,7 +5,7 @@ import {
   Cell,
 } from "recharts";
 import { T } from "../../lib/theme";
-import { fmtINR } from "../../lib/formatters";
+import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { PERSONS } from "../../lib/constants";
 
 // ── data helpers ──────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ function computeFYData(fy, incomeData, rsuData) {
     for (let mi = 0; mi < 12; mi++) {
       const d = incomeData?.[fy]?.[p]?.[mi] || {};
       salary += Number(d.take_home || 0);
-      espp   += Number(d.espp      || 0);
+      espp   += getEsspINR(d);
       epf    += Number(d.epf       || 0);
       bonus  += (d.ad_hoc || []).reduce((s, i) => s + Number(i.amount || 0), 0);
     }

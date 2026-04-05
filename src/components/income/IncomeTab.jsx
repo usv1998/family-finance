@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense } from "react";
 import { T } from "../../lib/theme";
-import { getCurrentFY, getCurrentMonthIdx } from "../../lib/formatters";
+import { getCurrentFY, getCurrentMonthIdx, getEsspINR } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER } from "../../lib/constants";
 import { downloadCSV } from "../../lib/csvExport";
 import SummaryCards from "./SummaryCards";
@@ -27,11 +27,18 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
     const headers = ["Component", "Person", ...MONTHS, "FY Total"];
     const rows = [];
     PERSONS.forEach(p => {
-      ["take_home","epf","espp","car_lease"].forEach(c => {
+      ["take_home","epf","car_lease"].forEach(c => {
         if (c === "car_lease" && p !== "Selva") return;
         const vals = MONTHS.map((_,mi) => Number(incomeData?.[fy]?.[p]?.[mi]?.[c]) || 0);
         rows.push([c, p, ...vals, vals.reduce((s,v)=>s+v, 0)]);
       });
+      // ESPP: export shares, price, rate, and derived INR
+      ["espp_shares","espp_price_usd","espp_usd_inr"].forEach(c => {
+        const vals = MONTHS.map((_,mi) => Number(incomeData?.[fy]?.[p]?.[mi]?.[c]) || 0);
+        rows.push([c, p, ...vals, vals.reduce((s,v)=>s+v, 0)]);
+      });
+      const esppINRVals = MONTHS.map((_,mi) => Math.round(getEsspINR(incomeData?.[fy]?.[p]?.[mi])));
+      rows.push(["espp_inr", p, ...esppINRVals, esppINRVals.reduce((s,v)=>s+v, 0)]);
     });
     downloadCSV(`income_${fy}.csv`, [headers, ...rows]);
   };

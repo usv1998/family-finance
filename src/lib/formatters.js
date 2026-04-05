@@ -37,3 +37,12 @@ export const getFYOptions = () => {
 };
 
 export const genId = () => Math.random().toString(36).slice(2, 10);
+
+// Derive ESPP INR value from month data — supports both new model (espp_shares × price × rate)
+// and legacy model (espp field stored directly as INR).
+export const getEsspINR = (d) => {
+  if (!d) return 0;
+  if (d.espp_shares != null)
+    return (Number(d.espp_shares) || 0) * (Number(d.espp_price_usd) || 0) * (Number(d.espp_usd_inr) || 0);
+  return Number(d.espp) || 0;
+};

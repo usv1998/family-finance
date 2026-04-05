@@ -4,7 +4,7 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
 import { T } from "../../lib/theme";
-import { fmtINR } from "../../lib/formatters";
+import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { PERSONS, MONTHS } from "../../lib/constants";
 
 // ── data helpers ──────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ function computeFYIncome(fy, incomeData, rsuData) {
   for (const p of PERSONS) {
     for (let mi = 0; mi < 12; mi++) {
       const d = incomeData?.[fy]?.[p]?.[mi] || {};
-      total += Number(d.take_home || 0) + Number(d.espp || 0)
+      total += Number(d.take_home || 0) + getEsspINR(d)
              + Number(d.epf || 0)
              + (d.ad_hoc || []).reduce((s, i) => s + Number(i.amount || 0), 0);
     }

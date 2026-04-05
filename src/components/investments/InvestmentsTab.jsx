@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { T } from "../../lib/theme";
-import { fmtINR } from "../../lib/formatters";
+import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { genId } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER, PERSON_STOCK } from "../../lib/constants";
 
@@ -31,8 +31,11 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
 
   // ── ESPP calculations ──
   const esppByPerson = PERSONS.map(p => {
-    const vests = MONTHS.map((_,mi)=>({ mi, val:Number(incomeData?.[fy]?.[p]?.[mi]?.espp)||0 })).filter(v=>v.val>0);
-    const total = vests.reduce((s,v)=>s+v.val, 0);
+    const vests = MONTHS.map((_,mi) => {
+      const d = incomeData?.[fy]?.[p]?.[mi] || {};
+      return { mi, shares: Number(d.espp_shares) || 0, inr: getEsspINR(d) };
+    }).filter(v => v.shares > 0 || v.inr > 0);
+    const total = vests.reduce((s,v) => s + v.inr, 0);
     return { person:p, vests, total };
   });
   const esppGrand = esppByPerson.reduce((s,e)=>s+e.total, 0);
@@ -167,7 +170,10 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                 : e.vests.map(v=>(
                   <div key={v.mi} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${T.border}33`, fontSize:"12px" }}>
                     <span style={{ color:T.textDim }}>{MONTH_FULL[v.mi]} vest</span>
-                    <span style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:600 }}>{fmtINR(v.val)}</span>
+                    <div style={{ textAlign:"right" }}>
+                      {v.shares > 0 && <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.teal, fontWeight:600 }}>{v.shares} shares</div>}
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:600, fontSize:"11px" }}>{fmtINR(v.inr)}</div>
+                    </div>
                   </div>
                 ))
               }

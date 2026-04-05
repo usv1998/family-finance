@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { T } from "../../lib/theme";
-import { fmtINR } from "../../lib/formatters";
+import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { PERSONS } from "../../lib/constants";
 
 // ── Tax slab definitions (FY 2025-26) ─────────────────────────────────────────
@@ -81,7 +81,7 @@ function extractIncome(person, fy, incomeData, rsuData) {
   let espp = 0, bonus = 0, epf = 0;
   for (let mi = 0; mi < 12; mi++) {
     const d = incomeData?.[fy]?.[person]?.[mi] || {};
-    espp  += Number(d.espp || 0);
+    espp  += getEsspINR(d);
     epf   += Number(d.epf  || 0);
     bonus += (d.ad_hoc || []).reduce((s, i) => s + Number(i.amount || 0), 0);
   }
