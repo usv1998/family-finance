@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { T } from "../../lib/theme";
 import { getCurrentFY, getCurrentMonthIdx } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER } from "../../lib/constants";
@@ -6,7 +6,8 @@ import SummaryCards from "./SummaryCards";
 import IncomeTable from "./IncomeTable";
 import MonthlyInput from "./MonthlyInput";
 import AdHocItems from "./AdHocItems";
-import IncomeGrowthChart from "../charts/IncomeGrowthChart";
+
+const IncomeGrowthChart = lazy(() => import("../charts/IncomeGrowthChart"));
 
 const CURR_FY  = getCurrentFY();
 const CURR_MI  = getCurrentMonthIdx();
@@ -106,9 +107,11 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, fy, on
         <div style={{ background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`, padding:"20px" }}>
           <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Income Growth — All Financial Years</div>
           <div style={{ fontSize:"12px", color:T.textMuted, marginBottom:"20px" }}>
-            Stacked by component · Hover a bar for breakdown · Dashed line = total trend
+            Stacked by component · Hover a bar for breakdown · Click legend to hide/show · Dashed line = total trend
           </div>
-          <IncomeGrowthChart incomeData={incomeData} rsuData={rsuData} viewMode={viewMode}/>
+          <Suspense fallback={<div style={{ textAlign:"center", padding:"60px", color:T.textMuted }}>Loading chart…</div>}>
+            <IncomeGrowthChart incomeData={incomeData} rsuData={rsuData}/>
+          </Suspense>
         </div>
       )}
     </div>

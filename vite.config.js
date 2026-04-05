@@ -40,6 +40,13 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: { recharts: ["recharts"] }
+      }
+    }
+  },
   server: {
     host: true,
     port: 5173
