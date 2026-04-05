@@ -58,11 +58,12 @@ A personal family finance tracker built in React + Vite, deployed to GitHub Page
 | Tab ID | Label | Status |
 |--------|-------|--------|
 | income | Income | ✅ Live |
-| rsu | RSU Tracker | ✅ Live — **pending merge into Portfolio** |
-| investments | Investments | ✅ Live |
+| investments | Investments | ✅ Live — includes Goals section |
 | expenses | Expenses | ✅ Live |
-| portfolio | Net Worth | ✅ Live — being redesigned into Portfolio |
+| portfolio | Portfolio | ✅ Live — Overview/Holdings/Grants with XIRR + auto-derived holdings |
 | tax | Tax | ✅ Live |
+
+RSU Tracker tab was removed — its content (vest events + grant schedule) lives in Portfolio → Grants view.
 
 ---
 
@@ -336,9 +337,9 @@ selva:"#3B82F6", akshaya:"#EC4899"
 
 ---
 
-## Pending Work — Portfolio Redesign
+## Completed Work — Portfolio Redesign (v1.6)
 
-**The single biggest pending task.** Plan agreed, not yet implemented.
+**Fully implemented.** Summary of what was built:
 
 ### What changes
 1. **Remove RSU tab** from TABS — all its content moves into the Portfolio tab
@@ -411,25 +412,27 @@ Grants: (moved from RSU tab — grant schedule + upcoming vests)
 // Display: progress bar, % complete, ₹ remaining, months remaining
 ```
 
-### Files to create/modify
-| File | Action |
+### Files created/modified in v1.6
+| File | Change |
 |------|--------|
-| `src/lib/xirr.js` | NEW — Newton-Raphson XIRR solver |
-| `src/lib/historicalFX.js` | NEW — fetch historical USD/INR from Frankfurter |
-| `src/lib/derivedHoldings.js` | NEW — compute RSU/ESPP/EPF/BabyFund holdings from stored data |
-| `src/components/portfolio/PortfolioTab.jsx` | NEW — replaces NetWorthTab as main component |
-| `src/components/portfolio/AddHoldingForm.jsx` | MODIFY — add acquisitionDate/price/currency + FX auto-fetch |
-| `src/components/portfolio/HoldingCard.jsx` | MODIFY — add XIRR display, acquisition date |
-| `src/components/investments/InvestmentsTab.jsx` | MODIFY — add Goals section |
-| `src/FamilyFinanceTracker.jsx` | MODIFY — remove RSU tab, pass rsuData+investmentsData to Portfolio |
-| `src/lib/constants.js` | MODIFY — remove RSU from TABS |
+| `src/lib/xirr.js` | NEW — Newton-Raphson XIRR: `xirr()`, `holdingXIRR()`, `portfolioXIRR()` |
+| `src/lib/historicalFX.js` | NEW — `fetchHistoricalUSDINR(dateStr)` from `api.frankfurter.app` (cached) |
+| `src/lib/derivedHoldings.js` | NEW — `getDerivedHoldings(rsuData, incomeData, investmentsData)` |
+| `src/components/portfolio/PortfolioTab.jsx` | REWRITTEN — Overview/Holdings/Grants sub-views |
+| `src/components/portfolio/AddHoldingForm.jsx` | MODIFIED — acquisitionDate, acquisitionPrice, FX auto-fetch |
+| `src/components/portfolio/HoldingCard.jsx` | MODIFIED — XIRR display, AUTO/RSU/ESPP badges, no delete for derived |
+| `src/components/investments/InvestmentsTab.jsx` | MODIFIED — Goals section added |
+| `src/FamilyFinanceTracker.jsx` | MODIFIED — removed RSU tab, new PortfolioTab props |
+| `src/lib/constants.js` | MODIFIED — removed RSU tab, renamed Net Worth → Portfolio |
 
-### Implementation order
-1. `xirr.js` + `historicalFX.js` + `derivedHoldings.js` (foundations — no UI)
-2. New `PortfolioTab.jsx` — Overview + Holdings sections
-3. Update `AddHoldingForm` — acquisition date/price + FX fetch
-4. Move Grants into Portfolio, remove RSU tab from nav
-5. Goals in Investments tab
+### Goals data model
+Goals are stored cross-FY under `investmentsData.goals` (not per-FY):
+```javascript
+investmentsData.goals = [
+  { id, name, targetAmount, targetDate, instrument, savedAmount, notes }
+]
+// Update: onUpdateInvestments("goals", newGoalsArray)
+```
 
 ---
 
@@ -443,3 +446,4 @@ Grants: (moved from RSU tab — grant schedule + upcoming vests)
 | v1.3 | Savings rate chart, RSU appreciation (unrealized gain), income projection chart |
 | v1.4 | Tax estimation tab (Old vs New regime, FY2025-26) |
 | v1.5 | Net Worth tab (replaces Portfolio): 6 asset classes, per-person, MF search, FD compounding, live prices. ESPP tracked as net shares + price + rate. getEsspINR() helper. |
+| v1.6 | Portfolio redesign: merged RSU Tracker into Portfolio tab (Grants view). Auto-derived holdings (RSU lots, ESPP lots, EPF per-person, Baby Fund, Debt Funds). XIRR per holding + per category + portfolio. Historical USD/INR from Frankfurter. Goals section in Investments tab. |

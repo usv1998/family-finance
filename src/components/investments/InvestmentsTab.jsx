@@ -4,16 +4,40 @@ import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { genId } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER, PERSON_STOCK } from "../../lib/constants";
 
+const EMPTY_GOAL = { name:"", targetAmount:"", targetDate:"", instrument:"", savedAmount:"", notes:"" };
+
 export default function InvestmentsTab({ incomeData, rsuData, investmentsData, fy, onUpdateInvestments }) {
   const inv = investmentsData?.[fy] || {};
   const epfOpening = inv.epfOpening || { Selva:0, Akshaya:0 };
   const babyFund   = inv.babyFund   || { monthlyTarget:50000, months:{} };
   const debtFunds  = inv.debtFunds  || [];
+  const goals      = investmentsData?.goals || [];
 
-  const [newDebt, setNewDebt] = useState({ name:"", type:"", amount:"", date:"", notes:"" });
+  const [newDebt,      setNewDebt]      = useState({ name:"", type:"", amount:"", date:"", notes:"" });
   const [showDebtForm, setShowDebtForm] = useState(false);
+  const [newGoal,      setNewGoal]      = useState(EMPTY_GOAL);
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [editGoalId,   setEditGoalId]   = useState(null);
+  const [editGoalBal,  setEditGoalBal]  = useState(0);
 
-  const updateInv = (patch) => onUpdateInvestments(fy, { ...inv, ...patch });
+  const updateInv   = (patch) => onUpdateInvestments(fy, { ...inv, ...patch });
+  const updateGoals = (next)  => onUpdateInvestments("goals", next);
+
+  const addGoal = () => {
+    if (!newGoal.name || !newGoal.targetAmount) return;
+    updateGoals([...goals, {
+      id: genId(), ...newGoal,
+      targetAmount: Number(newGoal.targetAmount),
+      savedAmount:  Number(newGoal.savedAmount) || 0,
+    }]);
+    setNewGoal(EMPTY_GOAL);
+    setShowGoalForm(false);
+  };
+  const removeGoal = (id) => updateGoals(goals.filter(g => g.id !== id));
+  const saveGoalBalance = (id) => {
+    updateGoals(goals.map(g => g.id === id ? { ...g, savedAmount: editGoalBal } : g));
+    setEditGoalId(null);
+  };
 
   // ── EPF calculations ──
   const epfByPerson = PERSONS.map(p => {
@@ -305,6 +329,165 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
             </div>
           )
         }
+      </div>
+      {/* ── Goals ── */}
+      <div style={sec}>
+        <div style={secH}>
+          <span>Financial Goals</span>
+          <button onClick={() => setShowGoalForm(!showGoalForm)}
+            style={{ padding:"6px 14px", background:T.accentBg, border:`1px solid ${T.accent}44`,
+              color:T.accent, borderRadius:"6px", fontSize:"11px", cursor:"pointer", fontWeight:600 }}>
+            {showGoalForm ? "Cancel" : "+ Add Goal"}
+          </button>
+        </div>
+
+        {/* Add goal form */}
+        {showGoalForm && (
+          <div style={{ padding:"16px", background:T.bg, borderRadius:"10px", marginBottom:"16px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:"10px", marginBottom:"12px" }}>
+              {[
+                { k:"name",         label:"Goal Name",          placeholder:"e.g. Singapore Trip" },
+                { k:"targetAmount", label:"Target Amount (₹)",  placeholder:"500000",    num:true  },
+                { k:"targetDate",   label:"Target Date",        placeholder:"",          date:true },
+                { k:"instrument",   label:"Instrument",         placeholder:"Gold ETF, Liquid Fund…" },
+                { k:"savedAmount",  label:"Already Saved (₹)",  placeholder:"0",         num:true  },
+                { k:"notes",        label:"Notes",              placeholder:"Optional"             },
+              ].map(f => (
+                <div key={f.k}>
+                  <label style={{ fontSize:"11px", color:T.textDim, fontWeight:600, display:"block", marginBottom:"4px" }}>{f.label}</label>
+                  <input type={f.date?"date":f.num?"number":"text"}
+                    value={newGoal[f.k]||""} placeholder={f.placeholder}
+                    onChange={e => setNewGoal(g => ({ ...g, [f.k]: e.target.value }))}
+                    style={{ ...inp, fontFamily:f.num?"'JetBrains Mono',monospace":undefined }}
+                    onFocus={e=>e.target.style.borderColor=T.accent}
+                    onBlur={e=>e.target.style.borderColor=T.border}/>
+                </div>
+              ))}
+            </div>
+            <button onClick={addGoal}
+              style={{ padding:"8px 24px", background:T.accent, border:"none", borderRadius:"8px",
+                color:T.bg, fontSize:"13px", fontWeight:700, cursor:"pointer" }}>
+              Add Goal
+            </button>
+          </div>
+        )}
+
+        {goals.length === 0 && !showGoalForm ? (
+          <div style={{ textAlign:"center", padding:"32px", color:T.textMuted, fontSize:"13px" }}>
+            No goals yet. Track savings towards a trip, event, or any financial milestone.
+          </div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
+            {goals.map(g => {
+              const target   = Number(g.targetAmount) || 0;
+              const saved    = Number(g.savedAmount)  || 0;
+              const pct      = target > 0 ? Math.min(100, saved / target * 100) : 0;
+              const remaining = Math.max(0, target - saved);
+              const today    = new Date();
+              const dueDate  = g.targetDate ? new Date(g.targetDate) : null;
+              const msLeft   = dueDate ? dueDate - today : null;
+              const daysLeft = msLeft ? Math.ceil(msLeft / 86400000) : null;
+              const monthsLeft = msLeft ? Math.max(0, Math.round(msLeft / (30.44 * 86400000))) : null;
+              const monthlyNeeded = monthsLeft > 0 ? remaining / monthsLeft : null;
+              const overdue  = daysLeft !== null && daysLeft < 0;
+              const urgent   = daysLeft !== null && daysLeft <= 60 && !overdue;
+              const dateCol  = overdue ? T.red : urgent ? T.amber : T.textMuted;
+
+              return (
+                <div key={g.id} style={{ padding:"16px 20px", background:T.bg, borderRadius:"12px",
+                  border:`1px solid ${pct>=100?T.accent:T.border}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start",
+                    flexWrap:"wrap", gap:"8px", marginBottom:"10px" }}>
+                    <div>
+                      <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                        <span style={{ fontSize:"14px", fontWeight:700, color:T.text }}>{g.name}</span>
+                        {pct >= 100 && (
+                          <span style={{ fontSize:"10px", fontWeight:700, padding:"2px 8px", borderRadius:"10px",
+                            background:`${T.accent}22`, color:T.accent }}>ACHIEVED</span>
+                        )}
+                        {g.instrument && (
+                          <span style={{ fontSize:"10px", fontWeight:700, padding:"2px 8px", borderRadius:"10px",
+                            background:`${T.blue}22`, color:T.blue }}>{g.instrument}</span>
+                        )}
+                      </div>
+                      {dueDate && (
+                        <div style={{ fontSize:"11px", color:dateCol, marginTop:"3px" }}>
+                          {overdue
+                            ? `Overdue by ${Math.abs(daysLeft)}d`
+                            : `${dueDate.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})} · ${monthsLeft} month${monthsLeft!==1?"s":""} left`}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Balance editor */}
+                    <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                      {editGoalId === g.id ? (
+                        <>
+                          <input type="number" value={editGoalBal}
+                            onChange={e => setEditGoalBal(Number(e.target.value))}
+                            style={{ width:"120px", padding:"5px 8px", background:T.card,
+                              border:`1px solid ${T.accent}`, borderRadius:"6px",
+                              color:T.text, fontSize:"13px", fontFamily:"'JetBrains Mono',monospace", outline:"none", textAlign:"right" }}/>
+                          <button onClick={() => saveGoalBalance(g.id)}
+                            style={{ padding:"5px 12px", background:T.accent, border:"none",
+                              borderRadius:"6px", color:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
+                            Save
+                          </button>
+                          <button onClick={() => setEditGoalId(null)}
+                            style={{ padding:"5px 8px", background:"transparent", border:`1px solid ${T.border}`,
+                              borderRadius:"6px", color:T.textDim, fontSize:"12px", cursor:"pointer" }}>✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"16px",
+                            fontWeight:800, color:pct>=100?T.accent:T.text }}>
+                            {fmtINR(saved)}
+                          </span>
+                          <button onClick={() => { setEditGoalId(g.id); setEditGoalBal(saved); }}
+                            style={{ background:"none", border:"none", color:T.textMuted,
+                              cursor:"pointer", fontSize:"13px", padding:"2px 4px" }}
+                            title="Update saved amount">✎</button>
+                        </>
+                      )}
+                      <button onClick={() => { if (window.confirm("Remove this goal?")) removeGoal(g.id); }}
+                        style={{ background:"none", border:"none", color:T.red, cursor:"pointer",
+                          fontSize:"13px", opacity:0.5, padding:"2px 4px" }}
+                        title="Remove goal">✕</button>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div style={{ marginBottom:"8px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", fontSize:"11px",
+                      color:T.textMuted, marginBottom:"5px" }}>
+                      <span>{pct.toFixed(0)}% complete</span>
+                      <span>{fmtINR(remaining)} remaining of {fmtINR(target)}</span>
+                    </div>
+                    <div style={{ height:"7px", background:T.border, borderRadius:"4px", overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${pct}%`, borderRadius:"4px",
+                        background: pct>=100 ? T.accent : urgent ? T.amber : T.blue,
+                        transition:"width 0.5s ease" }}/>
+                    </div>
+                  </div>
+
+                  {/* Monthly needed */}
+                  {monthlyNeeded !== null && monthlyNeeded > 0 && pct < 100 && (
+                    <div style={{ fontSize:"11px", color:T.textMuted }}>
+                      Need{" "}
+                      <span style={{ fontFamily:"'JetBrains Mono',monospace", color:urgent?T.amber:T.textDim, fontWeight:700 }}>
+                        {fmtINR(Math.ceil(monthlyNeeded))}
+                      </span>
+                      {" "}/ month to reach goal
+                    </div>
+                  )}
+                  {g.notes && (
+                    <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"4px", fontStyle:"italic" }}>{g.notes}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
