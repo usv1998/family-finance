@@ -12,6 +12,6 @@ export const TABS = [
   { id:"rsu",         label:"RSU Tracker",  active:true  },
   { id:"investments", label:"Investments",  active:true  },
   { id:"expenses",    label:"Expenses",     active:true  },
-  { id:"portfolio",   label:"Portfolio",    active:true  },
+  { id:"portfolio",   label:"Net Worth",    active:true  },
   { id:"tax",         label:"Tax",          active:true  },
 ];
