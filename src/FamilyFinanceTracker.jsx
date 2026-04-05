@@ -14,6 +14,7 @@ import RsuTab from "./components/rsu/RsuTab";
 import InvestmentsTab from "./components/investments/InvestmentsTab";
 import ExpensesTab from "./components/expenses/ExpensesTab";
 import PortfolioTab from "./components/portfolio/PortfolioTab";
+import TaxTab from "./components/tax/TaxTab";
 
 export default function FamilyFinanceTracker() {
   const [activeTab,      setActiveTab]      = useState("income");
@@ -286,10 +287,13 @@ export default function FamilyFinanceTracker() {
             liveData={liveData}
           />
         )}
+        {activeTab==="tax"&&(
+          <TaxTab incomeData={incomeData} rsuData={rsuData} fy={fy}/>
+        )}
       </div>
 
       <div style={{ padding:"16px 20px", borderTop:`1px solid ${T.border}`, textAlign:"center", color:T.textMuted, fontSize:"11px" }}>
-        Family Finance Tracker v1.3 · FY2025-26 onwards · All-time corpus · Data synced across devices
+        Family Finance Tracker v1.4 · FY2025-26 onwards · All-time corpus · Data synced across devices
       </div>
     </div>
   );

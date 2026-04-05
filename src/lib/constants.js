@@ -13,4 +13,5 @@ export const TABS = [
   { id:"investments", label:"Investments",  active:true  },
   { id:"expenses",    label:"Expenses",     active:true  },
   { id:"portfolio",   label:"Portfolio",    active:true  },
+  { id:"tax",         label:"Tax",          active:true  },
 ];
