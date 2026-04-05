@@ -2,35 +2,37 @@ import { useState, lazy, Suspense } from "react";
 import { T } from "../../lib/theme";
 import { getCurrentFY, getCurrentMonthIdx } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER } from "../../lib/constants";
+import { downloadCSV } from "../../lib/csvExport";
 import SummaryCards from "./SummaryCards";
 import IncomeTable from "./IncomeTable";
 import MonthlyInput from "./MonthlyInput";
 import AdHocItems from "./AdHocItems";
 
-const IncomeGrowthChart = lazy(() => import("../charts/IncomeGrowthChart"));
+const IncomeGrowthChart  = lazy(() => import("../charts/IncomeGrowthChart"));
+const SavingsRateChart   = lazy(() => import("../charts/SavingsRateChart"));
 
 const CURR_FY  = getCurrentFY();
 const CURR_MI  = getCurrentMonthIdx();
 
-export default function IncomeTab({ incomeData, rsuData, investmentsData, fy, onUpdateIncome }) {
+export default function IncomeTab({ incomeData, rsuData, investmentsData, expensesData, fy, onUpdateIncome }) {
   const [section,    setSection]    = useState("table");   // "table" | "charts"
+  const [chartView,  setChartView]  = useState("income");  // "income" | "savings"
   const [viewMode,   setViewMode]   = useState("combined");
   const [editMonth,  setEditMonth]  = useState(null);
   const [editPerson, setEditPerson] = useState("Selva");
   const highlightMonth = fy === CURR_FY ? CURR_MI : null;
 
   const exportCSV = () => {
-    let csv="Component,Person,"+MONTHS.join(",")+",FY Total\n";
-    PERSONS.forEach(p=>{
-      ["take_home","epf","espp","car_lease"].forEach(c=>{
-        if(c==="car_lease"&&p!=="Selva") return;
-        const vals=MONTHS.map((_,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.[c])||0);
-        csv+=`${c},${p},${vals.join(",")},${vals.reduce((s,v)=>s+v,0)}\n`;
+    const headers = ["Component", "Person", ...MONTHS, "FY Total"];
+    const rows = [];
+    PERSONS.forEach(p => {
+      ["take_home","epf","espp","car_lease"].forEach(c => {
+        if (c === "car_lease" && p !== "Selva") return;
+        const vals = MONTHS.map((_,mi) => Number(incomeData?.[fy]?.[p]?.[mi]?.[c]) || 0);
+        rows.push([c, p, ...vals, vals.reduce((s,v)=>s+v, 0)]);
       });
     });
-    const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-    Object.assign(document.createElement("a"),{href:url,download:`income_${fy}.csv`}).click();
-    URL.revokeObjectURL(url);
+    downloadCSV(`income_${fy}.csv`, [headers, ...rows]);
   };
 
   const btnStyle=(active)=>({padding:"8px 16px",borderRadius:"8px",border:"none",fontSize:"13px",fontWeight:600,cursor:"pointer",transition:"all 0.2s",background:active?T.accent:"transparent",color:active?T.bg:T.textDim});
@@ -105,12 +107,31 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, fy, on
       {/* ── Charts section ── */}
       {section === "charts" && (
         <div style={{ background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`, padding:"20px" }}>
-          <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Income Growth — All Financial Years</div>
-          <div style={{ fontSize:"12px", color:T.textMuted, marginBottom:"20px" }}>
-            Stacked by component · Hover a bar for breakdown · Click legend to hide/show · Dashed line = total trend
+          {/* Chart toggle */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:"12px", marginBottom:"20px" }}>
+            <div>
+              {chartView === "income" ? (
+                <>
+                  <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Income Growth — All Financial Years</div>
+                  <div style={{ fontSize:"12px", color:T.textMuted }}>Stacked by component · Hover for breakdown · Click legend to hide/show · Dashed line = total trend</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Savings Rate — All Financial Years</div>
+                  <div style={{ fontSize:"12px", color:T.textMuted }}>Income vs Expenses bars · Dashed line = savings rate % · Right axis = %</div>
+                </>
+              )}
+            </div>
+            <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px" }}>
+              <button onClick={()=>setChartView("income")}  style={btnStyle(chartView==="income")}>Income Growth</button>
+              <button onClick={()=>setChartView("savings")} style={btnStyle(chartView==="savings")}>Savings Rate</button>
+            </div>
           </div>
           <Suspense fallback={<div style={{ textAlign:"center", padding:"60px", color:T.textMuted }}>Loading chart…</div>}>
-            <IncomeGrowthChart incomeData={incomeData} rsuData={rsuData}/>
+            {chartView === "income"
+              ? <IncomeGrowthChart incomeData={incomeData} rsuData={rsuData}/>
+              : <SavingsRateChart  incomeData={incomeData} rsuData={rsuData} expensesData={expensesData}/>
+            }
           </Suspense>
         </div>
       )}

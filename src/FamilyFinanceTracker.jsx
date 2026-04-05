@@ -244,6 +244,7 @@ export default function FamilyFinanceTracker() {
             incomeData={incomeData}
             rsuData={rsuData}
             investmentsData={investmentsData}
+            expensesData={expensesData}
             fy={fy}
             onUpdateIncome={updateMonthlyIncome}
           />

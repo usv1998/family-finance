@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   ResponsiveContainer, ComposedChart, Bar, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -87,7 +87,7 @@ function CustomLegend({ hiddenKeys, onToggle }) {
               color: hidden ? T.textMuted : seg.color,
               fontSize:"11px", fontWeight:600, cursor:"pointer", opacity: hidden ? 0.5 : 1, transition:"all 0.15s" }}>
             <span style={{ width:"8px", height:"8px", borderRadius: seg.key==="total" ? "2px" : "50%",
-              background: hidden ? T.textMuted : seg.color, flexShrink:0,
+              flexShrink:0,
               borderTop: seg.key==="total" ? `2px dashed ${hidden?T.textMuted:seg.color}` : "none",
               background: seg.key==="total" ? "none" : (hidden ? T.textMuted : seg.color) }}/>
             {seg.label}
@@ -109,12 +109,13 @@ export default function IncomeGrowthChart({ incomeData, rsuData }) {
     return next;
   });
 
-  const allFYs = [...new Set([
-    ...Object.keys(incomeData || {}),
-    ...Object.keys(rsuData   || {}),
-  ])].filter(k => k.startsWith("FY")).sort();
-
-  const data = allFYs.map(fy => computeFYData(fy, incomeData, rsuData));
+  const data = useMemo(() => {
+    const allFYs = [...new Set([
+      ...Object.keys(incomeData || {}),
+      ...Object.keys(rsuData   || {}),
+    ])].filter(k => k.startsWith("FY")).sort();
+    return allFYs.map(fy => computeFYData(fy, incomeData, rsuData));
+  }, [incomeData, rsuData]);
 
   if (!data.length) return (
     <div style={{ textAlign:"center", padding:"60px", color:T.textMuted, fontSize:"14px" }}>

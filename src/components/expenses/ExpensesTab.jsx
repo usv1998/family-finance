@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { T } from "../../lib/theme";
-import { fmtINR, genId } from "../../lib/formatters";
+import { fmtINR, genId, getCurrentMonthIdx } from "../../lib/formatters";
 import { MONTHS, MONTH_FULL } from "../../lib/constants";
 import { SEED_DATA } from "../../lib/seed";
 import { downloadCSV } from "../../lib/csvExport";
@@ -10,9 +10,7 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   const categories= inv.categories || SEED_DATA.expensesData["FY2026-27"].categories;
   const actuals   = inv.actuals    || {};
 
-  const now = new Date();
-  const curMI = now.getMonth() >= 3 ? now.getMonth() - 3 : now.getMonth() + 9;
-  const [selMonth, setSelMonth] = useState(curMI);
+  const [selMonth, setSelMonth] = useState(getCurrentMonthIdx);
   const [editVals, setEditVals] = useState({});
   const [editingMonth, setEditingMonth] = useState(null);
   const [showAddCat, setShowAddCat] = useState(false);

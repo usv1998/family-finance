@@ -6,37 +6,28 @@ const YF_URL   = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=MSFT
 const FOREX_URL = "https://api.frankfurter.app/latest?from=USD&to=INR";
 
 export async function fetchLiveData() {
+  // ── Run Yahoo and Frankfurter in parallel ────────────────────────────────
+  const [yahooResult, forexResult] = await Promise.allSettled([
+    fetch(YF_URL,   { cache: "no-store" }).then(r => r.ok ? r.json() : null),
+    fetch(FOREX_URL,{ cache: "no-store" }).then(r => r.ok ? r.json() : null),
+  ]);
+
   let msft = null, nvda = null, usdinr = null;
 
-  // ── Try Yahoo Finance (all three in one call) ───────────────────────────
-  try {
-    const res = await fetch(YF_URL, { cache: "no-store" });
-    if (res.ok) {
-      const json = await res.json();
-      const results = json?.quoteResponse?.result || [];
-      for (const r of results) {
-        const p = r.regularMarketPrice;
-        if (r.symbol === "MSFT")      msft   = p;
-        else if (r.symbol === "NVDA") nvda   = p;
-        else if (r.symbol === "USDINR=X") usdinr = p;
-      }
+  if (yahooResult.status === "fulfilled" && yahooResult.value) {
+    for (const r of yahooResult.value?.quoteResponse?.result || []) {
+      const p = r.regularMarketPrice;
+      if (r.symbol === "MSFT")          msft   = p;
+      else if (r.symbol === "NVDA")     nvda   = p;
+      else if (r.symbol === "USDINR=X") usdinr = p;
     }
-  } catch (_) {
-    // Yahoo blocked or network error — fall through to forex fallback
   }
 
-  // ── Frankfurter fallback for USD/INR if Yahoo didn't return it ──────────
-  if (!usdinr) {
-    try {
-      const res = await fetch(FOREX_URL, { cache: "no-store" });
-      if (res.ok) {
-        const json = await res.json();
-        usdinr = json?.rates?.INR ?? null;
-      }
-    } catch (_) { /* ignore */ }
+  // Prefer Yahoo's USDINR; fall back to Frankfurter
+  if (!usdinr && forexResult.status === "fulfilled" && forexResult.value) {
+    usdinr = forexResult.value?.rates?.INR ?? null;
   }
 
-  // Return whatever we got; null means "use previous / default"
   return {
     MSFT:    msft,
     NVDA:    nvda,

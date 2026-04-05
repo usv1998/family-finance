@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { T } from "../../lib/theme";
 import { fmtINR, fmtUSD } from "../../lib/formatters";
 import { generateVestSchedule, isConfirmed, getConfirmedEvent } from "../../lib/grantUtils";
@@ -6,6 +6,11 @@ import { generateVestSchedule, isConfirmed, getConfirmedEvent } from "../../lib/
 export default function GrantList({ grants, rsuData, liveData, onDelete }) {
   const [expanded, setExpanded] = useState({});
   const toggle = (id) => setExpanded(e => ({ ...e, [id]: !e[id] }));
+
+  const schedules = useMemo(
+    () => Object.fromEntries(grants.map(g => [g.id, generateVestSchedule(g)])),
+    [grants]
+  );
 
   if (!grants.length) return (
     <div style={{ textAlign:"center", padding:"40px", color:T.textMuted, fontSize:"14px" }}>
@@ -16,7 +21,7 @@ export default function GrantList({ grants, rsuData, liveData, onDelete }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
       {grants.map(grant => {
-        const schedule   = generateVestSchedule(grant);
+        const schedule   = schedules[grant.id] || [];
         const confirmed  = schedule.filter(v => isConfirmed(v.vest_date, grant.person, grant.stock, rsuData)).length;
         const total      = schedule.length;
         const remaining  = total - confirmed;
