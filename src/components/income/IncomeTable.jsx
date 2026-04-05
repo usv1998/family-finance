@@ -2,7 +2,7 @@ import { T } from "../../lib/theme";
 import { fmtINR } from "../../lib/formatters";
 import { MONTHS, PERSONS } from "../../lib/constants";
 
-export default function IncomeTable({ incomeData, rsuData, fy, viewMode }) {
+export default function IncomeTable({ incomeData, rsuData, fy, viewMode, highlightMonth }) {
   const persons = viewMode==="combined" ? PERSONS : [viewMode];
   const getMD   = (p,mi)=>incomeData?.[fy]?.[p]?.[mi]||{};
   const getRSU  = (p,mi)=>(rsuData?.[fy]||[]).filter(r=>r.person===p&&r.month_idx===mi).reduce((s,r)=>s+(r.units_vested*r.stock_price_usd*r.usd_inr_rate||0),0);
@@ -30,7 +30,7 @@ export default function IncomeTable({ incomeData, rsuData, fy, viewMode }) {
         <thead>
           <tr style={{ background:T.card }}>
             <th style={{ padding:"12px 16px", textAlign:"left", color:T.textDim, fontSize:"11px", fontWeight:700, letterSpacing:"0.5px", borderBottom:`1px solid ${T.border}`, position:"sticky", left:0, background:T.card, zIndex:1 }}>COMPONENT</th>
-            {MONTHS.map(m=><th key={m} style={{ padding:"12px 8px", textAlign:"right", color:T.textDim, fontSize:"11px", fontWeight:700, borderBottom:`1px solid ${T.border}` }}>{m.toUpperCase()}</th>)}
+            {MONTHS.map((m,mi)=><th key={m} style={{ padding:"12px 8px", textAlign:"right", color:mi===highlightMonth?T.accent:T.textDim, fontSize:"11px", fontWeight:700, borderBottom:`1px solid ${T.border}`, background:mi===highlightMonth?T.accentBg:"transparent" }}>{m.toUpperCase()}{mi===highlightMonth&&<span style={{ display:"block", fontSize:"9px", color:T.accent, letterSpacing:"0.5px" }}>NOW</span>}</th>)}
             <th style={{ padding:"12px 16px", textAlign:"right", color:T.accent, fontSize:"11px", fontWeight:700, borderBottom:`1px solid ${T.border}` }}>FY TOTAL</th>
           </tr>
         </thead>
@@ -40,7 +40,8 @@ export default function IncomeTable({ incomeData, rsuData, fy, viewMode }) {
               <td style={{ padding:"10px 16px", color:row.isTotal?T.accent:T.text, fontWeight:row.isTotal?700:500, fontSize:"12px", position:"sticky", left:0, background:row.isTotal?T.accentBg:T.surface, zIndex:1 }}>{row.label}</td>
               {MONTHS.map((_,mi)=>{
                 const val=getCombined(row,mi);
-                return <td key={mi} style={{ padding:"10px 8px", textAlign:"right", color:val>0?(row.isTotal?T.accent:T.text):T.textMuted, fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", fontWeight:row.isTotal?700:400 }}>{val>0?fmtINR(val):"—"}</td>;
+                const isCur = mi===highlightMonth;
+                return <td key={mi} style={{ padding:"10px 8px", textAlign:"right", color:val>0?(row.isTotal?T.accent:T.text):T.textMuted, fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", fontWeight:row.isTotal?700:400, background:isCur?(row.isTotal?T.accent+"22":T.accentBg+"99"):"transparent", borderLeft:isCur?`1px solid ${T.accent}33`:"none", borderRight:isCur?`1px solid ${T.accent}33`:"none" }}>{val>0?fmtINR(val):"—"}</td>;
               })}
               <td style={{ padding:"10px 16px", textAlign:"right", color:row.isTotal?T.accent:T.white, fontFamily:"'JetBrains Mono',monospace", fontSize:"13px", fontWeight:700 }}>{fmtINR(getRowTotal(row))}</td>
             </tr>

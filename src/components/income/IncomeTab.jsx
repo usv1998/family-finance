@@ -1,15 +1,20 @@
 import { useState } from "react";
 import { T } from "../../lib/theme";
+import { getCurrentFY, getCurrentMonthIdx } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER } from "../../lib/constants";
 import SummaryCards from "./SummaryCards";
 import IncomeTable from "./IncomeTable";
 import MonthlyInput from "./MonthlyInput";
 import AdHocItems from "./AdHocItems";
 
+const CURR_FY  = getCurrentFY();
+const CURR_MI  = getCurrentMonthIdx();
+
 export default function IncomeTab({ incomeData, rsuData, investmentsData, fy, onUpdateIncome }) {
   const [viewMode,   setViewMode]   = useState("combined");
   const [editMonth,  setEditMonth]  = useState(null);
   const [editPerson, setEditPerson] = useState("Selva");
+  const highlightMonth = fy === CURR_FY ? CURR_MI : null;
 
   const exportCSV = () => {
     let csv="Component,Person,"+MONTHS.join(",")+",FY Total\n";
@@ -39,7 +44,7 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, fy, on
         <button onClick={exportCSV} style={{ padding:"8px 16px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", cursor:"pointer", fontWeight:600 }}>Export CSV ↓</button>
       </div>
       <SummaryCards incomeData={incomeData} rsuData={rsuData} investmentsData={investmentsData} fy={fy}/>
-      <IncomeTable  incomeData={incomeData} rsuData={rsuData} fy={fy} viewMode={viewMode}/>
+      <IncomeTable  incomeData={incomeData} rsuData={rsuData} fy={fy} viewMode={viewMode} highlightMonth={highlightMonth}/>
       <div style={{ marginTop:"24px" }}>
         <h3 style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"12px" }}>Enter Monthly Income</h3>
         <div style={{ display:"flex", gap:"8px", flexWrap:"wrap", marginBottom:"16px" }}>
@@ -49,10 +54,14 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, fy, on
           <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px", overflowX:"auto" }}>
             {MONTHS.map((m,i)=>{
               const hasData=incomeData?.[fy]?.[editPerson]?.[i]?.take_home;
+              const isCurr = i === highlightMonth;
               return (
                 <button key={m} onClick={()=>setEditMonth(editMonth===i?null:i)}
-                  style={{...btnStyle(editMonth===i),padding:"6px 10px",fontSize:"12px",position:"relative",...(hasData&&editMonth!==i?{color:T.accent}:{})}}>
-                  {m}{hasData&&<span style={{ position:"absolute",top:2,right:2,width:4,height:4,borderRadius:"50%",background:T.accent }}/>}
+                  style={{...btnStyle(editMonth===i),padding:"6px 10px",fontSize:"12px",position:"relative",
+                    ...(hasData&&editMonth!==i?{color:T.accent}:{}),
+                    ...(isCurr&&editMonth!==i?{outline:`2px solid ${T.accent}`,outlineOffset:"2px"}:{})}}>
+                  {m}
+                  {hasData&&<span style={{ position:"absolute",top:2,right:2,width:4,height:4,borderRadius:"50%",background:T.accent }}/>}
                 </button>
               );
             })}

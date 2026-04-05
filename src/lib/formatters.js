@@ -24,9 +24,15 @@ export const getCurrentFY = () => {
   return `FY${year}-${(year + 1).toString().slice(2)}`;
 };
 
+// Returns Apr=0 … Mar=11 for today's month, regardless of FY
+export const getCurrentMonthIdx = () => {
+  const m = new Date().getMonth(); // 0=Jan … 11=Dec
+  return m >= 3 ? m - 3 : m + 9;
+};
+
 export const getFYOptions = () => {
   const opts = [];
-  for (let y = 2023; y <= 2028; y++) opts.push(`FY${y}-${(y+1).toString().slice(2)}`);
+  for (let y = 2025; y <= 2028; y++) opts.push(`FY${y}-${(y+1).toString().slice(2)}`);
   return opts;
 };
 

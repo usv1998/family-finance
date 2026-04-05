@@ -44,6 +44,11 @@ export const SEED_DATA = {
     ],
   },
   investmentsData: {
+    "FY2025-26": {
+      epfOpening: { Selva: 0, Akshaya: 0 },
+      babyFund: { monthlyTarget: 50000, months: {} },
+      debtFunds: [],
+    },
     "FY2026-27": {
       epfOpening: { Selva: 363580, Akshaya: 349612 },
       babyFund: {
@@ -54,6 +59,20 @@ export const SEED_DATA = {
     },
   },
   expensesData: {
+    "FY2025-26": {
+      categories: [
+        { id:"rent",      name:"Rent",       budget:45000, color:"#3B82F6" },
+        { id:"parents",   name:"Parents",    budget:20000, color:"#F59E0B" },
+        { id:"groceries", name:"Groceries",  budget:15000, color:"#22C55E" },
+        { id:"dining",    name:"Dining Out", budget:6000,  color:"#14B8A6" },
+        { id:"shopping",  name:"Shopping",   budget:10000, color:"#A855F7" },
+        { id:"travel",    name:"Travel",     budget:8000,  color:"#EC4899" },
+        { id:"utilities", name:"Utilities",  budget:3000,  color:"#8B96AD" },
+        { id:"medical",   name:"Medical",    budget:3000,  color:"#EF4444" },
+        { id:"misc",      name:"Misc",       budget:5000,  color:"#5A6580" },
+      ],
+      actuals: {},
+    },
     "FY2026-27": {
       categories: [
         { id:"rent",      name:"Rent",       budget:48000, color:"#3B82F6" },
@@ -70,6 +89,27 @@ export const SEED_DATA = {
     },
   },
   portfolioData: {
+    // Opening snapshot — portfolio state as of April 1, 2025 (before FY2025-26 starts)
+    // Fill in via "Initialize Opening Balances" in the Portfolio tab
+    opening: {
+      stocks:         { MSFT: { shares: 0 }, NVDA: { shares: 0 } },
+      sipCorpus:      0,   // total mutual fund corpus already accumulated
+      epf:            { Selva: 0, Akshaya: 0 },
+      gold:           { units: 0, pricePerUnit: 15100 },
+      debtFunds:      [],
+      babyFundCorpus: 0,
+      otherEquity:    [],
+      initialized:    false,
+    },
+    "FY2025-26": {
+      stocks: { MSFT: { shares: 0 }, NVDA: { shares: 0 } },
+      sips: [
+        { id:"nifty50-26",   name:"Nifty 50 Index Fund",  monthly:14000, months:{} },
+        { id:"midcap150-26", name:"Midcap 150 Index Fund", monthly:6000,  months:{} },
+      ],
+      gold: { units: 0, pricePerUnit: 15100 },
+      otherEquity: [],
+    },
     "FY2026-27": {
       stocks: { MSFT: { shares: 0 }, NVDA: { shares: 0 } },
       sips: [

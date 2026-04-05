@@ -242,7 +242,7 @@ export default function FamilyFinanceTracker() {
       </div>
 
       <div style={{ padding:"16px 20px", borderTop:`1px solid ${T.border}`, textAlign:"center", color:T.textMuted, fontSize:"11px" }}>
-        Family Finance Tracker v1.1 · Investments tab unlocked · Data persists across sessions
+        Family Finance Tracker v1.3 · FY2025-26 onwards · All-time corpus · Data synced across devices
       </div>
     </div>
   );
