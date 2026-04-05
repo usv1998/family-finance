@@ -10,13 +10,14 @@ import AdHocItems from "./AdHocItems";
 
 const IncomeGrowthChart  = lazy(() => import("../charts/IncomeGrowthChart"));
 const SavingsRateChart   = lazy(() => import("../charts/SavingsRateChart"));
+const ProjectionChart    = lazy(() => import("../charts/ProjectionChart"));
 
 const CURR_FY  = getCurrentFY();
 const CURR_MI  = getCurrentMonthIdx();
 
-export default function IncomeTab({ incomeData, rsuData, investmentsData, expensesData, fy, onUpdateIncome }) {
+export default function IncomeTab({ incomeData, rsuData, investmentsData, expensesData, rsuGrants, liveData, fy, onUpdateIncome }) {
   const [section,    setSection]    = useState("table");   // "table" | "charts"
-  const [chartView,  setChartView]  = useState("income");  // "income" | "savings"
+  const [chartView,  setChartView]  = useState("income");  // "income" | "savings" | "projection"
   const [viewMode,   setViewMode]   = useState("combined");
   const [editMonth,  setEditMonth]  = useState(null);
   const [editPerson, setEditPerson] = useState("Selva");
@@ -110,28 +111,37 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
           {/* Chart toggle */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:"12px", marginBottom:"20px" }}>
             <div>
-              {chartView === "income" ? (
+              {{
+              income: (
                 <>
                   <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Income Growth — All Financial Years</div>
                   <div style={{ fontSize:"12px", color:T.textMuted }}>Stacked by component · Hover for breakdown · Click legend to hide/show · Dashed line = total trend</div>
                 </>
-              ) : (
+              ),
+              savings: (
                 <>
                   <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Savings Rate — All Financial Years</div>
                   <div style={{ fontSize:"12px", color:T.textMuted }}>Income vs Expenses bars · Dashed line = savings rate % · Right axis = %</div>
                 </>
-              )}
+              ),
+              projection: (
+                <>
+                  <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Income Projection</div>
+                  <div style={{ fontSize:"12px", color:T.textMuted }}>Actuals + projected FYs · Faded bars = projection · RSU from grant schedules at live prices</div>
+                </>
+              ),
+            }[chartView]}
             </div>
             <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px" }}>
-              <button onClick={()=>setChartView("income")}  style={btnStyle(chartView==="income")}>Income Growth</button>
-              <button onClick={()=>setChartView("savings")} style={btnStyle(chartView==="savings")}>Savings Rate</button>
+              <button onClick={()=>setChartView("income")}     style={btnStyle(chartView==="income")}>Income Growth</button>
+              <button onClick={()=>setChartView("savings")}    style={btnStyle(chartView==="savings")}>Savings Rate</button>
+              <button onClick={()=>setChartView("projection")} style={btnStyle(chartView==="projection")}>Projection</button>
             </div>
           </div>
           <Suspense fallback={<div style={{ textAlign:"center", padding:"60px", color:T.textMuted }}>Loading chart…</div>}>
-            {chartView === "income"
-              ? <IncomeGrowthChart incomeData={incomeData} rsuData={rsuData}/>
-              : <SavingsRateChart  incomeData={incomeData} rsuData={rsuData} expensesData={expensesData}/>
-            }
+            {chartView === "income"     && <IncomeGrowthChart incomeData={incomeData} rsuData={rsuData}/>}
+            {chartView === "savings"    && <SavingsRateChart  incomeData={incomeData} rsuData={rsuData} expensesData={expensesData}/>}
+            {chartView === "projection" && <ProjectionChart   incomeData={incomeData} rsuData={rsuData} rsuGrants={rsuGrants} liveData={liveData}/>}
           </Suspense>
         </div>
       )}
