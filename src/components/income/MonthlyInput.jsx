@@ -7,7 +7,11 @@ export default function MonthlyInput({ data, onChange, person }) {
     { key:"espp_shares",    label:"ESPP Net Shares",  placeholder:"e.g. 3"      },
     { key:"espp_price_usd", label:"ESPP Price ($)",   placeholder:"e.g. 420"    },
     { key:"espp_usd_inr",   label:"USD/INR (ESPP)",   placeholder:"e.g. 94"     },
-    { key:"espp_vest_date", label:"ESPP Vest Date",   placeholder:"",  date:true },
+    { key:"espp_vest_date",  label:"ESPP Vest Date",   placeholder:"",  date:true },
+    { key:"rsu_net_shares",  label:"RSU Net Shares",   placeholder:"e.g. 10"     },
+    { key:"rsu_price_usd",   label:"RSU Price ($)",    placeholder:"e.g. 420"    },
+    { key:"rsu_usd_inr",     label:"USD/INR (RSU)",    placeholder:"e.g. 94"     },
+    { key:"rsu_vest_date",   label:"RSU Vest Date",    placeholder:"",  date:true },
     ...(isSelva ? [{ key:"car_lease", label:"Car Lease (₹)", placeholder:"e.g. 50706" }] : []),
   ];
   const inp = { width:"100%", padding:"10px 12px", background:T.bg, border:`1px solid ${T.border}`,

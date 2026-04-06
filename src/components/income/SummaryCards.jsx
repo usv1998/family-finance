@@ -10,8 +10,13 @@ export default function SummaryCards({ incomeData, rsuData, investmentsData, fy 
   const totalEPF      = (epfOpening.Selva + epfOpening.Akshaya) + empEPF * 2;
   const totalESPPINR  = sum((p,mi)=>getEsspINR(incomeData?.[fy]?.[p]?.[mi]));
   const totalESPPSh   = sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.espp_shares)||0);
-  const totalRSUINR   = (rsuData?.[fy]||[]).reduce((s,r)=>s+((r.units_vested-(r.tax_withheld_units||0))*r.stock_price_usd*r.usd_inr_rate||0),0);
-  const totalRSUSh    = (rsuData?.[fy]||[]).reduce((s,r)=>s+(r.units_vested-(r.tax_withheld_units||0)),0);
+  const hasIncomeRSU  = PERSONS.some(p=>MONTHS.some((_,mi)=>incomeData?.[fy]?.[p]?.[mi]?.rsu_net_shares!=null));
+  const totalRSUSh    = hasIncomeRSU
+    ? sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.rsu_net_shares)||0)
+    : (rsuData?.[fy]||[]).reduce((s,r)=>s+(r.units_vested-(r.tax_withheld_units||0)),0);
+  const totalRSUINR   = hasIncomeRSU
+    ? sum((p,mi)=>{ const d=incomeData?.[fy]?.[p]?.[mi]||{}; return (Number(d.rsu_net_shares)||0)*(Number(d.rsu_price_usd)||0)*(Number(d.rsu_usd_inr)||0); })
+    : (rsuData?.[fy]||[]).reduce((s,r)=>s+((r.units_vested-(r.tax_withheld_units||0))*r.stock_price_usd*r.usd_inr_rate||0),0);
   const totalCar      = sum((p,mi)=>p==="Selva"?Number(incomeData?.[fy]?.[p]?.[mi]?.car_lease):0);
   const totalAH       = sum((p,mi)=>(incomeData?.[fy]?.[p]?.[mi]?.ad_hoc||[]).reduce((a,i)=>a+(Number(i.amount)||0),0));
   const grand         = totalTH + totalEPF + totalESPPINR + totalRSUINR + totalCar + totalAH;

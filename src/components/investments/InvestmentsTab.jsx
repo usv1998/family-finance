@@ -49,16 +49,37 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
   });
   const epfGrand = epfByPerson.reduce((s,e)=>s+e.total, 0);
 
-  // ── ESPP calculations ──
-  const esppByPerson = PERSONS.map(p => {
-    const vests = MONTHS.map((_,mi) => {
+  // ── US Stocks calculations (RSU + ESPP) ──
+  const usStocksByPerson = PERSONS.map(p => {
+    const esppVests = MONTHS.map((_,mi) => {
       const d = incomeData?.[fy]?.[p]?.[mi] || {};
-      return { mi, shares: Number(d.espp_shares) || 0, inr: getEsspINR(d), vestDate: d.espp_vest_date };
-    }).filter(v => v.shares > 0 || v.inr > 0);
-    const total = vests.reduce((s,v) => s + v.inr, 0);
-    return { person:p, vests, total };
+      const shares = Number(d.espp_shares) || 0;
+      const inr = getEsspINR(d);
+      if (!shares && !inr) return null;
+      return { mi, kind:"ESPP", shares, inr, vestDate: d.espp_vest_date };
+    }).filter(Boolean);
+
+    const rsuVests = MONTHS.map((_,mi) => {
+      const d = incomeData?.[fy]?.[p]?.[mi] || {};
+      if (d.rsu_net_shares != null) {
+        const shares = Number(d.rsu_net_shares) || 0;
+        const inr = shares * (Number(d.rsu_price_usd)||0) * (Number(d.rsu_usd_inr)||0);
+        if (!shares && !inr) return null;
+        return { mi, kind:"RSU", shares, inr, vestDate: d.rsu_vest_date };
+      }
+      // fallback to rsuData
+      const events = (rsuData?.[fy]||[]).filter(r=>r.person===p&&r.month_idx===mi);
+      const shares = events.reduce((s,r)=>s+(r.units_vested-(r.tax_withheld_units||0)),0);
+      const inr = events.reduce((s,r)=>s+((r.units_vested-(r.tax_withheld_units||0))*r.stock_price_usd*r.usd_inr_rate||0),0);
+      if (!shares && !inr) return null;
+      return { mi, kind:"RSU", shares, inr, vestDate: null };
+    }).filter(Boolean);
+
+    const allVests = [...rsuVests, ...esppVests].sort((a,b)=>a.mi-b.mi);
+    const total = allVests.reduce((s,v)=>s+v.inr, 0);
+    return { person:p, vests:allVests, total };
   });
-  const esppGrand = esppByPerson.reduce((s,e)=>s+e.total, 0);
+  const usStocksGrand = usStocksByPerson.reduce((s,e)=>s+e.total, 0);
 
   // shared styles
   const sec = { background:T.card, borderRadius:"14px", border:`1px solid ${T.border}`, padding:"20px", marginBottom:"20px" };
@@ -82,8 +103,8 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
       {/* ── Top summary ── */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:"12px", marginBottom:"24px" }}>
         <SumCard label="EPF Corpus (FY)"  value={fmtINR(epfGrand)}  sub={`Opening ${fmtINR(epfOpening.Selva+epfOpening.Akshaya)}`} color={T.blue}   />
-        <SumCard label="ESPP Stocks (FY)" value={fmtINR(esppGrand)} sub="Net stock value at vest"   color={T.amber}  />
-        <SumCard label="Total Investments" value={fmtINR(epfGrand+esppGrand)} color={T.white} />
+        <SumCard label="US Stocks (FY)"   value={fmtINR(usStocksGrand)} sub="RSU + ESPP net value at vest" color={T.amber}  />
+        <SumCard label="Total Investments" value={fmtINR(epfGrand+usStocksGrand)} color={T.white} />
       </div>
 
       {/* ── EPF Section ── */}
@@ -151,29 +172,34 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
         ))}
       </div>
 
-      {/* ── ESPP Section ── */}
+      {/* ── US Stocks (RSU + ESPP) ── */}
       <div style={sec}>
         <div style={secH}>
-          <span>ESPP — Employee Stock Purchase Plan</span>
-          <span style={{ fontSize:"11px", color:T.textMuted }}>Net stock value at each vest</span>
+          <span>US Stocks — RSU &amp; ESPP</span>
+          <span style={{ fontSize:"11px", color:T.textMuted }}>Net shares · value at vest date</span>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px" }}>
-          {esppByPerson.map(e=>(
+          {usStocksByPerson.map(e=>(
             <div key={e.person} style={{ padding:"14px", background:T.bg, borderRadius:"10px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
                 <span style={{ fontSize:"13px", fontWeight:700, color:e.person==="Selva"?T.selva:T.akshaya }}>{e.person} · {PERSON_STOCK[e.person]}</span>
                 <span style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:700 }}>{fmtINR(e.total)}</span>
               </div>
               {e.vests.length===0
-                ? <div style={{ color:T.textMuted, fontSize:"12px" }}>No ESPP vests recorded yet</div>
+                ? <div style={{ color:T.textMuted, fontSize:"12px" }}>No vests recorded yet — enter in Income tab</div>
                 : e.vests.map(v=>(
-                  <div key={v.mi} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${T.border}33`, fontSize:"12px" }}>
+                  <div key={`${v.kind}-${v.mi}`} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${T.border}33`, fontSize:"12px" }}>
                     <div>
-                      <span style={{ color:T.textDim }}>{MONTH_FULL[v.mi]} vest</span>
+                      <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                        <span style={{ fontSize:"9px", fontWeight:700, padding:"1px 6px", borderRadius:"4px",
+                          background:v.kind==="RSU"?`${T.purple}22`:`${T.teal}22`,
+                          color:v.kind==="RSU"?T.purple:T.teal }}>{v.kind}</span>
+                        <span style={{ color:T.textDim }}>{MONTH_FULL[v.mi]} vest</span>
+                      </div>
                       {v.vestDate && <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"2px" }}>{new Date(v.vestDate).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div>}
                     </div>
                     <div style={{ textAlign:"right" }}>
-                      {v.shares > 0 && <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.teal, fontWeight:600 }}>{v.shares} shares</div>}
+                      {v.shares > 0 && <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.teal, fontWeight:600 }}>{v.shares} sh</div>}
                       <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:600, fontSize:"11px" }}>{fmtINR(v.inr)}</div>
                     </div>
                   </div>
@@ -183,7 +209,7 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
           ))}
         </div>
         <div style={{ marginTop:"12px", padding:"10px 14px", background:T.accentBg, borderRadius:"8px", fontSize:"11px", color:T.textDim }}>
-          ESPP values come from the Income tab (ESPP Net Shares field). Edit monthly income to update these.
+          RSU and ESPP values come from the Income tab monthly entries. Edit monthly income to update these.
         </div>
       </div>
 

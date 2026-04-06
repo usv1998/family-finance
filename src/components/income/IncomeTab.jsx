@@ -77,7 +77,7 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
       {section === "table" && (
         <>
           <IncomeTable incomeData={incomeData} rsuData={rsuData} fy={fy} viewMode={viewMode} highlightMonth={highlightMonth}
-            onSelectMonth={mi=>{ setEditMonth(mi); setTimeout(()=>editRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),50); }}/>
+            onSelectMonth={mi=>{ setEditMonth(mi); if(viewMode!=="combined") setEditPerson(viewMode); setTimeout(()=>editRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),50); }}/>
           <div ref={editRef} style={{ marginTop:"24px" }}>
             <h3 style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"12px" }}>Enter Monthly Income</h3>
             <div style={{ display:"flex", gap:"8px", flexWrap:"wrap", marginBottom:"16px" }}>
