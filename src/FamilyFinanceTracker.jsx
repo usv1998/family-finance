@@ -13,7 +13,6 @@ import IncomeTab from "./components/income/IncomeTab";
 import InvestmentsTab from "./components/investments/InvestmentsTab";
 import ExpensesTab from "./components/expenses/ExpensesTab";
 import PortfolioTab from "./components/portfolio/PortfolioTab";
-import TaxTab from "./components/tax/TaxTab";
 
 export default function FamilyFinanceTracker() {
   const [activeTab,      setActiveTab]      = useState("income");
@@ -300,9 +299,6 @@ export default function FamilyFinanceTracker() {
             onAddRsuGrant={addRsuGrant}
             onDeleteRsuGrant={deleteRsuGrant}
           />
-        )}
-        {activeTab==="tax"&&(
-          <TaxTab incomeData={incomeData} rsuData={rsuData} fy={fy}/>
         )}
       </div>
 
