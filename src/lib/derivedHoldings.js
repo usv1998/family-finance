@@ -9,8 +9,7 @@
  *   incomeData     → ESPP lots     (one per month with espp_shares > 0)
  *   incomeData +   → EPF balance   (one per person: opening + cumulative monthly × 2)
  *   investmentsData
- *   investmentsData → Baby Fund    (total contributed, treated as an equity SIP)
- *   investmentsData → Debt Funds   (each fund entry)
+ *   investmentsData → Long-term Goals (savedAmount as portfolio holding)
  */
 
 import { PERSONS, PERSON_STOCK, MONTHS } from "./constants";
@@ -90,7 +89,7 @@ function deriveESPPLots(incomeData) {
           symbol:              PERSON_STOCK[person],
           quantity:            shares,
           costBasisINR:        getEsspINR(d),
-          acquisitionDate:     miToDate(fy, mi),
+          acquisitionDate:     d.espp_vest_date || miToDate(fy, mi),
           acquisitionPrice:    priceUSD,
           acquisitionCurrency: "USD",
           acquisitionUSDINR:   rate,
@@ -140,50 +139,21 @@ function deriveEPF(incomeData, investmentsData) {
   });
 }
 
-// ── Baby Fund ──────────────────────────────────────────────────────────────
+// ── Long-term Goals ────────────────────────────────────────────────────────
 
-function deriveBabyFund(investmentsData) {
-  let total = 0;
-  for (const fy of Object.keys(investmentsData || {}).filter(k => k.startsWith("FY"))) {
-    const bf = investmentsData[fy]?.babyFund;
-    if (!bf) continue;
-    for (const [miStr, v] of Object.entries(bf.months || {})) {
-      if (!atOrBeforeNow(miToDate(fy, Number(miStr)))) continue;  // future month
-      total += Number(v || 0);
-    }
-  }
-  if (!total) return [];
-  return [{
-    id:           "derived-babyfund",
-    type:         "mf",
-    person:       "Joint",
-    name:         "Baby Education Fund",
-    units:        0,        // no NAV tracking — show cost basis as value
-    costBasisINR: total,
-    derived:      true,
-    source:       "babyFund",
-  }];
-}
-
-// ── Debt Funds ─────────────────────────────────────────────────────────────
-
-function deriveDebtFunds(investmentsData) {
-  const funds = [];
-  for (const fy of Object.keys(investmentsData || {}).filter(k => k.startsWith("FY"))) {
-    for (const fund of investmentsData[fy]?.debtFunds || []) {
-      funds.push({
-        id:           `derived-debtfund-${fund.id}`,
-        type:         "mf",
-        person:       "Joint",
-        name:         fund.name || "Debt Fund",
-        units:        0,
-        costBasisINR: Number(fund.amount || 0),
-        derived:      true,
-        source:       "debtFund",
-      });
-    }
-  }
-  return funds;
+function deriveGoals(investmentsData) {
+  return (investmentsData?.goals || [])
+    .filter(g => g.termType === "long" && Number(g.savedAmount) > 0)
+    .map(g => ({
+      id:           `derived-goal-${g.id}`,
+      type:         "mf",
+      person:       "Joint",
+      name:         g.name,
+      units:        0,
+      costBasisINR: Number(g.savedAmount) || 0,
+      derived:      true,
+      source:       "goal",
+    }));
 }
 
 // ── Main export ────────────────────────────────────────────────────────────
@@ -197,7 +167,6 @@ export function getDerivedHoldings(rsuData, incomeData, investmentsData) {
     ...deriveRSULots(rsuData),
     ...deriveESPPLots(incomeData),
     ...deriveEPF(incomeData, investmentsData),
-    ...deriveBabyFund(investmentsData),
-    ...deriveDebtFunds(investmentsData),
+    ...deriveGoals(investmentsData),
   ];
 }

@@ -78,8 +78,6 @@ export const SEED_DATA = {
   investmentsData: {
     "FY2026-27": {
       epfOpening: { Selva: 363580, Akshaya: 349612 },
-      babyFund: { monthlyTarget: 50000, months: {} },
-      debtFunds: [],
     },
   },
   expensesData: {

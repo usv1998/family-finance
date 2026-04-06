@@ -313,7 +313,7 @@ export default function PortfolioTab({
     ...h,
     currentValue: getHoldingValue(h, priceMap, usdinr),
     // Baby Fund and Debt Funds are Debt regardless of their mf type
-    category: (h.source === "babyFund" || h.source === "debtFund")
+    category: h.source === "goal"
       ? "Debt"
       : (CATEGORY_MAP[h.type] || "Other"),
   })), [allHoldings, priceMap, usdinr]);

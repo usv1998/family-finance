@@ -4,17 +4,13 @@ import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { genId } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER, PERSON_STOCK } from "../../lib/constants";
 
-const EMPTY_GOAL = { name:"", targetAmount:"", targetDate:"", instrument:"", savedAmount:"", notes:"" };
+const EMPTY_GOAL = { name:"", targetAmount:"", targetDate:"", termType:"short", instrument:"", savedAmount:"", notes:"" };
 
 export default function InvestmentsTab({ incomeData, rsuData, investmentsData, fy, onUpdateInvestments }) {
   const inv = investmentsData?.[fy] || {};
   const epfOpening = inv.epfOpening || { Selva:0, Akshaya:0 };
-  const babyFund   = inv.babyFund   || { monthlyTarget:50000, months:{} };
-  const debtFunds  = inv.debtFunds  || [];
   const goals      = investmentsData?.goals || [];
 
-  const [newDebt,      setNewDebt]      = useState({ name:"", type:"", amount:"", date:"", notes:"" });
-  const [showDebtForm, setShowDebtForm] = useState(false);
   const [newGoal,      setNewGoal]      = useState(EMPTY_GOAL);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [editGoalId,   setEditGoalId]   = useState(null);
@@ -43,11 +39,11 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
   const epfByPerson = PERSONS.map(p => {
     const monthly = MONTHS.map((_,mi) => Number(incomeData?.[fy]?.[p]?.[mi]?.epf)||0);
     const empYTD  = monthly.reduce((s,v)=>s+v, 0);
-    const emplYTD = empYTD; // employer matches 1:1
+    const emplYTD = empYTD;
     const opening = epfOpening[p] || 0;
     const running = MONTHS.map((_,mi) => {
       const cum = monthly.slice(0,mi+1).reduce((s,v)=>s+v,0);
-      return opening + cum * 2; // emp + employer
+      return opening + cum * 2;
     });
     return { person:p, monthly, empYTD, emplYTD, opening, total: opening + empYTD + emplYTD, running };
   });
@@ -57,28 +53,12 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
   const esppByPerson = PERSONS.map(p => {
     const vests = MONTHS.map((_,mi) => {
       const d = incomeData?.[fy]?.[p]?.[mi] || {};
-      return { mi, shares: Number(d.espp_shares) || 0, inr: getEsspINR(d) };
+      return { mi, shares: Number(d.espp_shares) || 0, inr: getEsspINR(d), vestDate: d.espp_vest_date };
     }).filter(v => v.shares > 0 || v.inr > 0);
     const total = vests.reduce((s,v) => s + v.inr, 0);
     return { person:p, vests, total };
   });
   const esppGrand = esppByPerson.reduce((s,e)=>s+e.total, 0);
-
-  // ── Baby Fund calculations ──
-  const babyMonthly = MONTHS.map((_,mi)=>Number(babyFund.months?.[mi])||0);
-  const babyYTD     = babyMonthly.reduce((s,v)=>s+v, 0);
-  const babyTarget  = Number(babyFund.monthlyTarget||0) * 12;
-
-  // ── Debt Fund totals ──
-  const debtTotal = debtFunds.reduce((s,d)=>s+Number(d.amount||0), 0);
-
-  const addDebt = () => {
-    if(!newDebt.name||!newDebt.amount) return;
-    updateInv({ debtFunds:[...debtFunds,{id:genId(),...newDebt}] });
-    setNewDebt({name:"",type:"",amount:"",date:"",notes:""});
-    setShowDebtForm(false);
-  };
-  const removeDebt = (id) => updateInv({ debtFunds: debtFunds.filter(d=>d.id!==id) });
 
   // shared styles
   const sec = { background:T.card, borderRadius:"14px", border:`1px solid ${T.border}`, padding:"20px", marginBottom:"20px" };
@@ -101,11 +81,9 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
     <div>
       {/* ── Top summary ── */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:"12px", marginBottom:"24px" }}>
-        <SumCard label="EPF Corpus (FY)"  value={fmtINR(epfGrand)}  sub={`Opening ₹${Math.round((epfOpening.Selva+epfOpening.Akshaya)/100000)*100000/100000}L`} color={T.blue}   />
+        <SumCard label="EPF Corpus (FY)"  value={fmtINR(epfGrand)}  sub={`Opening ${fmtINR(epfOpening.Selva+epfOpening.Akshaya)}`} color={T.blue}   />
         <SumCard label="ESPP Stocks (FY)" value={fmtINR(esppGrand)} sub="Net stock value at vest"   color={T.amber}  />
-        <SumCard label="Baby Fund (FY)"   value={fmtINR(babyYTD)}   sub={`${Math.round(babyYTD/babyTarget*100)}% of ₹${fmtINR(babyTarget)} target`} color={T.akshaya}/>
-        <SumCard label="Debt Funds"       value={fmtINR(debtTotal)} sub={`${debtFunds.length} fund${debtFunds.length!==1?"s":""}`} color={T.teal}   />
-        <SumCard label="Total Investments" value={fmtINR(epfGrand+esppGrand+babyYTD+debtTotal)} color={T.white} />
+        <SumCard label="Total Investments" value={fmtINR(epfGrand+esppGrand)} color={T.white} />
       </div>
 
       {/* ── EPF Section ── */}
@@ -115,7 +93,6 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
           <span style={{ fontSize:"11px", color:T.textMuted }}>Employee + Employer · 8.25% p.a.</span>
         </div>
 
-        {/* Opening balance editors */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", marginBottom:"16px", padding:"14px", background:T.bg, borderRadius:"10px" }}>
           <div style={{ fontSize:"11px", color:T.textDim, fontWeight:600, gridColumn:"1/-1", marginBottom:"4px" }}>OPENING BALANCE (Start of FY)</div>
           {PERSONS.map(p=>(
@@ -130,7 +107,6 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
           ))}
         </div>
 
-        {/* Per-person EPF details */}
         {epfByPerson.map(e=>(
           <div key={e.person} style={{ marginBottom:"16px", padding:"14px", background:T.bg, borderRadius:"10px" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
@@ -143,7 +119,6 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                 <div style={{ textAlign:"right" }}><div style={{ fontSize:"10px", color:T.textMuted }}>Corpus (incl. opening)</div><div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:700 }}>{fmtINR(e.total)}</div></div>
               </div>
             </div>
-            {/* Monthly table */}
             <div style={{ overflowX:"auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11px", minWidth:"700px" }}>
                 <thead>
@@ -193,7 +168,10 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                 ? <div style={{ color:T.textMuted, fontSize:"12px" }}>No ESPP vests recorded yet</div>
                 : e.vests.map(v=>(
                   <div key={v.mi} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${T.border}33`, fontSize:"12px" }}>
-                    <span style={{ color:T.textDim }}>{MONTH_FULL[v.mi]} vest</span>
+                    <div>
+                      <span style={{ color:T.textDim }}>{MONTH_FULL[v.mi]} vest</span>
+                      {v.vestDate && <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"2px" }}>{new Date(v.vestDate).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div>}
+                    </div>
                     <div style={{ textAlign:"right" }}>
                       {v.shares > 0 && <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.teal, fontWeight:600 }}>{v.shares} shares</div>}
                       <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:600, fontSize:"11px" }}>{fmtINR(v.inr)}</div>
@@ -205,131 +183,10 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
           ))}
         </div>
         <div style={{ marginTop:"12px", padding:"10px 14px", background:T.accentBg, borderRadius:"8px", fontSize:"11px", color:T.textDim }}>
-          ESPP values come from the Income tab (ESPP Net Stock field). Edit monthly income to update these.
+          ESPP values come from the Income tab (ESPP Net Shares field). Edit monthly income to update these.
         </div>
       </div>
 
-      {/* ── Baby Education Fund ── */}
-      <div style={sec}>
-        <div style={secH}>
-          <span>Baby Education Fund</span>
-          <PersonBadge p="Akshaya"/>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:"12px", marginBottom:"16px" }}>
-          <SumCard label="YTD Contributed" value={fmtINR(babyYTD)} color={T.akshaya}/>
-          <SumCard label="Annual Target"   value={fmtINR(babyTarget)} color={T.textDim}/>
-          <SumCard label="Remaining"       value={fmtINR(Math.max(0,babyTarget-babyYTD))} color={T.amber}/>
-        </div>
-
-        {/* Progress bar */}
-        <div style={{ marginBottom:"16px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:"11px", color:T.textMuted, marginBottom:"6px" }}>
-            <span>Progress</span><span>{Math.min(100,Math.round(babyYTD/babyTarget*100))}%</span>
-          </div>
-          <div style={{ height:"8px", background:T.border, borderRadius:"4px", overflow:"hidden" }}>
-            <div style={{ height:"100%", width:`${Math.min(100,babyYTD/babyTarget*100)}%`, background:T.akshaya, borderRadius:"4px", transition:"width 0.5s" }}/>
-          </div>
-        </div>
-
-        {/* Monthly target editor */}
-        <div style={{ display:"flex", alignItems:"center", gap:"12px", padding:"12px", background:T.bg, borderRadius:"10px", marginBottom:"14px" }}>
-          <label style={{ fontSize:"11px", color:T.textDim, fontWeight:600, whiteSpace:"nowrap" }}>Monthly Target</label>
-          <input type="number" value={babyFund.monthlyTarget||""} placeholder="50000"
-            onChange={e=>updateInv({babyFund:{...babyFund,monthlyTarget:Number(e.target.value)}})}
-            style={{...inp,fontFamily:"'JetBrains Mono',monospace",maxWidth:"160px"}}
-            onFocus={e=>e.target.style.borderColor=T.akshaya} onBlur={e=>e.target.style.borderColor=T.border}
-          />
-        </div>
-
-        {/* Monthly actuals */}
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"12px", minWidth:"700px" }}>
-            <thead>
-              <tr>{["Month","Actual","vs Target"].map(h=><th key={h} style={{ padding:"6px 10px", textAlign:h==="Month"?"left":"right", color:T.textMuted, fontWeight:600, fontSize:"10px", borderBottom:`1px solid ${T.border}` }}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {MONTHS.map((m,mi)=>{
-                const actual=Number(babyFund.months?.[mi])||0;
-                const tgt=Number(babyFund.monthlyTarget)||0;
-                const diff=actual-tgt;
-                return (
-                  <tr key={mi} style={{ borderBottom:`1px solid ${T.border}22` }}>
-                    <td style={{ padding:"6px 10px", color:T.textDim }}>{MONTH_FULL[mi]}</td>
-                    <td style={{ padding:"6px 10px", textAlign:"right" }}>
-                      <input type="number" value={babyFund.months?.[mi]||""} placeholder={String(babyFund.monthlyTarget||50000)}
-                        onChange={e=>updateInv({babyFund:{...babyFund,months:{...babyFund.months,[mi]:Number(e.target.value)}}})}
-                        style={{ width:"110px", padding:"4px 8px", background:T.bg, border:`1px solid ${T.border}`, borderRadius:"6px", color:T.text, fontSize:"12px", fontFamily:"'JetBrains Mono',monospace", outline:"none", textAlign:"right" }}
-                        onFocus={e=>e.target.style.borderColor=T.akshaya} onBlur={e=>e.target.style.borderColor=T.border}
-                      />
-                    </td>
-                    <td style={{ padding:"6px 10px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", fontSize:"11px", color:actual===0?T.textMuted:diff>=0?T.accent:T.red }}>
-                      {actual===0?"—":diff>=0?`+${fmtINR(diff)}`:fmtINR(diff)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── Debt Funds ── */}
-      <div style={sec}>
-        <div style={secH}>
-          <span>Debt Funds & Fixed Income</span>
-          <button onClick={()=>setShowDebtForm(!showDebtForm)} style={{ padding:"6px 14px", background:T.accentBg, border:`1px solid ${T.accent}44`, color:T.accent, borderRadius:"6px", fontSize:"11px", cursor:"pointer", fontWeight:600 }}>
-            {showDebtForm?"Cancel":"+ Add Fund"}
-          </button>
-        </div>
-
-        {showDebtForm&&(
-          <div style={{ padding:"16px", background:T.bg, borderRadius:"10px", marginBottom:"16px" }}>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:"10px", marginBottom:"12px" }}>
-              {[
-                {k:"name",    label:"Fund Name",      placeholder:"e.g. Edelweiss PPDAAF"},
-                {k:"type",    label:"Type",            placeholder:"e.g. Debt / FD / PPF"},
-                {k:"amount",  label:"Amount (₹)",      placeholder:"e.g. 500000",  num:true},
-                {k:"date",    label:"Investment Date", placeholder:"",              date:true},
-                {k:"notes",   label:"Notes",           placeholder:"Optional"},
-              ].map(f=>(
-                <div key={f.k}>
-                  <label style={{ fontSize:"11px", color:T.textDim, fontWeight:600, display:"block", marginBottom:"4px" }}>{f.label}</label>
-                  <input type={f.date?"date":f.num?"number":"text"} value={newDebt[f.k]||""} placeholder={f.placeholder}
-                    onChange={e=>setNewDebt(d=>({...d,[f.k]:e.target.value}))}
-                    style={{...inp, fontFamily:f.num?"'JetBrains Mono',monospace":undefined}}
-                    onFocus={e=>e.target.style.borderColor=T.teal} onBlur={e=>e.target.style.borderColor=T.border}
-                  />
-                </div>
-              ))}
-            </div>
-            <button onClick={addDebt} style={{ padding:"8px 24px", background:T.teal, border:"none", borderRadius:"8px", color:"#000", fontSize:"13px", fontWeight:700, cursor:"pointer" }}>Add Fund</button>
-          </div>
-        )}
-
-        {debtFunds.length===0
-          ? <div style={{ textAlign:"center", padding:"32px", color:T.textMuted, fontSize:"13px" }}>No debt funds added yet. Click "+ Add Fund" to start.</div>
-          : (
-            <div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))", gap:"12px" }}>
-                {debtFunds.map(d=>(
-                  <div key={d.id} style={{ padding:"14px 16px", background:T.bg, borderRadius:"10px", border:`1px solid ${T.border}`, position:"relative" }}>
-                    <button onClick={()=>removeDebt(d.id)} style={{ position:"absolute", top:"8px", right:"8px", background:"transparent", border:"none", color:T.red, cursor:"pointer", fontSize:"14px", opacity:0.6 }}>✕</button>
-                    <div style={{ fontSize:"13px", fontWeight:700, color:T.text, marginBottom:"4px", paddingRight:"20px" }}>{d.name}</div>
-                    <div style={{ fontSize:"11px", color:T.teal, marginBottom:"8px", fontWeight:600 }}>{d.type}</div>
-                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"18px", fontWeight:800, color:T.teal }}>{fmtINR(Number(d.amount)||0)}</div>
-                    {d.date&&<div style={{ fontSize:"10px", color:T.textMuted, marginTop:"4px" }}>{new Date(d.date).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div>}
-                    {d.notes&&<div style={{ fontSize:"11px", color:T.textMuted, marginTop:"4px" }}>{d.notes}</div>}
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop:"14px", padding:"12px 16px", background:T.bg, borderRadius:"10px", display:"flex", justifyContent:"space-between" }}>
-                <span style={{ fontSize:"13px", fontWeight:700, color:T.text }}>Total Debt Funds</span>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"16px", fontWeight:800, color:T.teal }}>{fmtINR(debtTotal)}</span>
-              </div>
-            </div>
-          )
-        }
-      </div>
       {/* ── Goals ── */}
       <div style={sec}>
         <div style={secH}>
@@ -341,7 +198,6 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
           </button>
         </div>
 
-        {/* Add goal form */}
         {showGoalForm && (
           <div style={{ padding:"16px", background:T.bg, borderRadius:"10px", marginBottom:"16px" }}>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:"10px", marginBottom:"12px" }}>
@@ -363,6 +219,23 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                     onBlur={e=>e.target.style.borderColor=T.border}/>
                 </div>
               ))}
+            </div>
+            {/* Term type toggle */}
+            <div style={{ marginBottom:"12px" }}>
+              <div style={{ fontSize:"11px", color:T.textDim, fontWeight:600, marginBottom:"6px" }}>GOAL TERM</div>
+              <div style={{ display:"flex", gap:"8px" }}>
+                {[{v:"short",label:"Short-term",sub:"&lt;3 yrs · tracked here only"},{v:"long",label:"Long-term",sub:"3+ yrs · auto-tracked in Portfolio"}].map(opt=>(
+                  <button key={opt.v} onClick={()=>setNewGoal(g=>({...g,termType:opt.v}))}
+                    style={{ padding:"8px 16px", borderRadius:"8px", border:`1px solid ${newGoal.termType===opt.v?T.accent:T.border}`,
+                      background:newGoal.termType===opt.v?T.accentBg:"transparent",
+                      color:newGoal.termType===opt.v?T.accent:T.textDim, cursor:"pointer", textAlign:"left", fontSize:"12px", fontWeight:600 }}>
+                    {opt.v === "long" ? "Long-term" : "Short-term"}
+                    <div style={{ fontSize:"10px", fontWeight:400, marginTop:"2px", color:T.textMuted }}>
+                      {opt.v === "long" ? "3+ yrs · auto-tracked in Portfolio" : "< 3 yrs · tracked here only"}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
             <button onClick={addGoal}
               style={{ padding:"8px 24px", background:T.accent, border:"none", borderRadius:"8px",
@@ -392,6 +265,7 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
               const overdue  = daysLeft !== null && daysLeft < 0;
               const urgent   = daysLeft !== null && daysLeft <= 60 && !overdue;
               const dateCol  = overdue ? T.red : urgent ? T.amber : T.textMuted;
+              const isLong   = g.termType === "long";
 
               return (
                 <div key={g.id} style={{ padding:"16px 20px", background:T.bg, borderRadius:"12px",
@@ -405,9 +279,13 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                           <span style={{ fontSize:"10px", fontWeight:700, padding:"2px 8px", borderRadius:"10px",
                             background:`${T.accent}22`, color:T.accent }}>ACHIEVED</span>
                         )}
-                        {g.instrument && (
+                        {isLong && (
                           <span style={{ fontSize:"10px", fontWeight:700, padding:"2px 8px", borderRadius:"10px",
-                            background:`${T.blue}22`, color:T.blue }}>{g.instrument}</span>
+                            background:`${T.blue}22`, color:T.blue }}>LONG-TERM · Portfolio tracked</span>
+                        )}
+                        {g.instrument && (
+                          <span style={{ fontSize:"10px", fontWeight:600, padding:"2px 8px", borderRadius:"10px",
+                            background:`${T.border}`, color:T.textDim }}>{g.instrument}</span>
                         )}
                       </div>
                       {dueDate && (
@@ -419,7 +297,6 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                       )}
                     </div>
 
-                    {/* Balance editor */}
                     <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
                       {editGoalId === g.id ? (
                         <>
@@ -456,7 +333,6 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                     </div>
                   </div>
 
-                  {/* Progress bar */}
                   <div style={{ marginBottom:"8px" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", fontSize:"11px",
                       color:T.textMuted, marginBottom:"5px" }}>
@@ -465,12 +341,11 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                     </div>
                     <div style={{ height:"7px", background:T.border, borderRadius:"4px", overflow:"hidden" }}>
                       <div style={{ height:"100%", width:`${pct}%`, borderRadius:"4px",
-                        background: pct>=100 ? T.accent : urgent ? T.amber : T.blue,
+                        background: pct>=100 ? T.accent : urgent ? T.amber : isLong ? T.blue : T.accent,
                         transition:"width 0.5s ease" }}/>
                     </div>
                   </div>
 
-                  {/* Monthly needed */}
                   {monthlyNeeded !== null && monthlyNeeded > 0 && pct < 100 && (
                     <div style={{ fontSize:"11px", color:T.textMuted }}>
                       Need{" "}

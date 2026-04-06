@@ -7,6 +7,7 @@ export default function MonthlyInput({ data, onChange, person }) {
     { key:"espp_shares",    label:"ESPP Net Shares",  placeholder:"e.g. 3"      },
     { key:"espp_price_usd", label:"ESPP Price ($)",   placeholder:"e.g. 420"    },
     { key:"espp_usd_inr",   label:"USD/INR (ESPP)",   placeholder:"e.g. 94"     },
+    { key:"espp_vest_date", label:"ESPP Vest Date",   placeholder:"",  date:true },
     ...(isSelva ? [{ key:"car_lease", label:"Car Lease (₹)", placeholder:"e.g. 50706" }] : []),
   ];
   const inp = { width:"100%", padding:"10px 12px", background:T.bg, border:`1px solid ${T.border}`,
@@ -19,7 +20,7 @@ export default function MonthlyInput({ data, onChange, person }) {
         {fields.map(f=>(
           <div key={f.key}>
             <label style={{ fontSize:"11px", color:T.textDim, fontWeight:600, display:"block", marginBottom:"4px" }}>{f.label}</label>
-            <input type="number" value={data?.[f.key]??""} placeholder={f.placeholder}
+            <input type={f.date?"date":"number"} value={data?.[f.key]??""} placeholder={f.placeholder}
               onChange={e=>onChange({...data,[f.key]:e.target.value})}
               style={inp}
               onFocus={e=>e.target.style.borderColor=T.accent}
