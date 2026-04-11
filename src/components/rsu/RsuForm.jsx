@@ -14,7 +14,8 @@ export default function RsuForm({ onAdd, liveData }) {
     // Auto-fetch historical prices when vest date is set
     const date = k==="vest_date" ? v : form.vest_date;
     const stock = k==="person" ? PERSON_STOCK[v] : (k==="stock" ? v : form.stock);
-    if(k==="vest_date" && v && new Date(v) < new Date()) {
+    const fullDate = /^\d{4}-\d{2}-\d{2}$/.test(v) && parseInt(v.slice(0,4)) >= 2000;
+    if(k==="vest_date" && fullDate && new Date(v) < new Date()) {
       setFetching(true);
       Promise.all([fetchHistoricalStockPrice(stock, v), fetchHistoricalUSDINR(v)])
         .then(([price, fx]) => {
