@@ -61,18 +61,10 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
 
     const rsuVests = MONTHS.map((_,mi) => {
       const d = incomeData?.[fy]?.[p]?.[mi] || {};
-      if (d.rsu_net_shares != null) {
-        const shares = Number(d.rsu_net_shares) || 0;
-        const inr = shares * (Number(d.rsu_price_usd)||0) * (Number(d.rsu_usd_inr)||0);
-        if (!shares && !inr) return null;
-        return { mi, kind:"RSU", shares, inr, vestDate: d.rsu_vest_date };
-      }
-      // fallback to rsuData
-      const events = (rsuData?.[fy]||[]).filter(r=>r.person===p&&r.month_idx===mi);
-      const shares = events.reduce((s,r)=>s+(r.units_vested-(r.tax_withheld_units||0)),0);
-      const inr = events.reduce((s,r)=>s+((r.units_vested-(r.tax_withheld_units||0))*r.stock_price_usd*r.usd_inr_rate||0),0);
+      const shares = Number(d.rsu_net_shares) || 0;
+      const inr = shares * (Number(d.rsu_price_usd)||0) * (Number(d.rsu_usd_inr)||0);
       if (!shares && !inr) return null;
-      return { mi, kind:"RSU", shares, inr, vestDate: null };
+      return { mi, kind:"RSU", shares, inr, vestDate: d.rsu_vest_date };
     }).filter(Boolean);
 
     const allVests = [...rsuVests, ...esppVests].sort((a,b)=>a.mi-b.mi);

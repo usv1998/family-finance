@@ -5,16 +5,8 @@ import { MONTHS, PERSONS } from "../../lib/constants";
 export default function IncomeTable({ incomeData, rsuData, fy, viewMode, highlightMonth, onSelectMonth }) {
   const persons = viewMode==="combined" ? PERSONS : [viewMode];
   const getMD        = (p,mi) => incomeData?.[fy]?.[p]?.[mi] || {};
-  const getRSUShares = (p,mi) => {
-    const d = incomeData?.[fy]?.[p]?.[mi];
-    if (d?.rsu_net_shares != null) return Number(d.rsu_net_shares) || 0;
-    return (rsuData?.[fy]||[]).filter(r=>r.person===p&&r.month_idx===mi).reduce((s,r)=>s+(r.units_vested-(r.tax_withheld_units||0)),0);
-  };
-  const getRSUINR = (p,mi) => {
-    const d = incomeData?.[fy]?.[p]?.[mi];
-    if (d?.rsu_net_shares != null) return (Number(d.rsu_net_shares)||0)*(Number(d.rsu_price_usd)||0)*(Number(d.rsu_usd_inr)||0);
-    return (rsuData?.[fy]||[]).filter(r=>r.person===p&&r.month_idx===mi).reduce((s,r)=>s+((r.units_vested-(r.tax_withheld_units||0))*r.stock_price_usd*r.usd_inr_rate||0),0);
-  };
+  const getRSUShares = (p,mi) => Number(incomeData?.[fy]?.[p]?.[mi]?.rsu_net_shares) || 0;
+  const getRSUINR    = (p,mi) => { const d=incomeData?.[fy]?.[p]?.[mi]||{}; return (Number(d.rsu_net_shares)||0)*(Number(d.rsu_price_usd)||0)*(Number(d.rsu_usd_inr)||0); };
 
   const rows = [
     {key:"take_home", label:"Take-Home Salary"},
