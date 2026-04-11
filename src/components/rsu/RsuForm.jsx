@@ -2,10 +2,30 @@ import { useState } from "react";
 import { T } from "../../lib/theme";
 import { fmtINR, fmtUSD, genId } from "../../lib/formatters";
 import { PERSONS, STOCKS, PERSON_STOCK, EMPLOYER } from "../../lib/constants";
+import { fetchHistoricalStockPrice, fetchHistoricalUSDINR } from "../../lib/historicalFX";
 
 export default function RsuForm({ onAdd, liveData }) {
   const [form,setForm]=useState({person:"Selva",stock:"MSFT",vest_date:"",units_vested:"",stock_price_usd:"",usd_inr_rate:"",tax_withheld_units:"",grant_id:"",notes:""});
-  const upd=(k,v)=>{const n={...form,[k]:v};if(k==="person")n.stock=PERSON_STOCK[v];setForm(n);};
+  const [fetching,setFetching]=useState(false);
+  const upd=(k,v)=>{
+    const n={...form,[k]:v};
+    if(k==="person") n.stock=PERSON_STOCK[v];
+    setForm(n);
+    // Auto-fetch historical prices when vest date is set
+    const date = k==="vest_date" ? v : form.vest_date;
+    const stock = k==="person" ? PERSON_STOCK[v] : (k==="stock" ? v : form.stock);
+    if(k==="vest_date" && v && new Date(v) < new Date()) {
+      setFetching(true);
+      Promise.all([fetchHistoricalStockPrice(stock, v), fetchHistoricalUSDINR(v)])
+        .then(([price, fx]) => {
+          setForm(f=>({...f, vest_date:v,
+            ...(price ? {stock_price_usd: price.toString()} : {}),
+            ...(fx    ? {usd_inr_rate:   Math.round(fx*100)/100 + ""} : {}),
+          }));
+        })
+        .finally(()=>setFetching(false));
+    }
+  };
   const useLive=()=>setForm(f=>({...f,stock_price_usd:liveData[f.stock]?.toString()||"",usd_inr_rate:liveData.USDINR?.toString()||""}));
   const gross=Number(form.units_vested)*Number(form.stock_price_usd);
   const grossINR=gross*Number(form.usd_inr_rate);
@@ -34,8 +54,14 @@ export default function RsuForm({ onAdd, liveData }) {
         <div><label style={lbl}>Stock</label><select value={form.stock} onChange={e=>upd("stock",e.target.value)} style={sel}>{STOCKS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
         <div><label style={lbl}>Vest Date</label><input type="date" value={form.vest_date} onChange={e=>upd("vest_date",e.target.value)} style={inp}/></div>
         <div><label style={lbl}>Units Vested</label><input type="number" value={form.units_vested} onChange={e=>upd("units_vested",e.target.value)} placeholder="e.g. 25" style={{...inp,fontFamily:"'JetBrains Mono',monospace"}}/></div>
-        <div><label style={lbl}>Stock Price (USD)</label><input type="number" step="0.01" value={form.stock_price_usd} onChange={e=>upd("stock_price_usd",e.target.value)} placeholder="e.g. 428.50" style={{...inp,fontFamily:"'JetBrains Mono',monospace"}}/></div>
-        <div><label style={lbl}>USD/INR Rate</label><input type="number" step="0.01" value={form.usd_inr_rate} onChange={e=>upd("usd_inr_rate",e.target.value)} placeholder="e.g. 85.42" style={{...inp,fontFamily:"'JetBrains Mono',monospace"}}/></div>
+        <div>
+          <label style={lbl}>Stock Price (USD){fetching&&<span style={{color:T.textMuted,fontWeight:400}}> fetching…</span>}</label>
+          <input type="number" step="0.01" value={form.stock_price_usd} onChange={e=>upd("stock_price_usd",e.target.value)} placeholder="e.g. 428.50" style={{...inp,fontFamily:"'JetBrains Mono',monospace",borderColor:fetching?T.accent:undefined}}/>
+        </div>
+        <div>
+          <label style={lbl}>USD/INR Rate{fetching&&<span style={{color:T.textMuted,fontWeight:400}}> fetching…</span>}</label>
+          <input type="number" step="0.01" value={form.usd_inr_rate} onChange={e=>upd("usd_inr_rate",e.target.value)} placeholder="e.g. 85.42" style={{...inp,fontFamily:"'JetBrains Mono',monospace",borderColor:fetching?T.accent:undefined}}/>
+        </div>
         <div><label style={lbl}>Tax Withheld (Units)</label><input type="number" value={form.tax_withheld_units} onChange={e=>upd("tax_withheld_units",e.target.value)} placeholder="0" style={{...inp,fontFamily:"'JetBrains Mono',monospace"}}/></div>
         <div><label style={lbl}>Grant ID</label><input value={form.grant_id} onChange={e=>upd("grant_id",e.target.value)} placeholder="Optional" style={inp}/></div>
       </div>
