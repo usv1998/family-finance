@@ -45,7 +45,7 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
       const cum = monthly.slice(0,mi+1).reduce((s,v)=>s+v,0);
       return opening + cum;
     });
-    return { person:p, monthly, opening, total: opening + empYTD, running };
+    return { person:p, monthly, opening, empYTD, total: opening + empYTD, running };
   });
   const epfGrand = epfByPerson.reduce((s,e)=>s+e.total, 0);
 
