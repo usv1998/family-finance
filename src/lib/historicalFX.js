@@ -1,7 +1,7 @@
 /**
  * Fetch historical USD/INR exchange rate from Frankfurter API.
  * Free, CORS-enabled, no auth required.
- * API: https://api.frankfurter.app/{YYYY-MM-DD}?from=USD&to=INR
+ * API: https://api.frankfurter.dev/v1/{YYYY-MM-DD}?from=USD&to=INR
  * Returns: { rates: { INR: 94.2 } }
  *
  * Weekends/holidays: Frankfurter returns the most recent business day's rate.
@@ -14,7 +14,7 @@ export async function fetchHistoricalUSDINR(dateStr) {
   if (cache.has(dateStr)) return cache.get(dateStr);
 
   try {
-    const res = await fetch(`https://api.frankfurter.app/${dateStr}?from=USD&to=INR`);
+    const res = await fetch(`https://api.frankfurter.dev/v1/${dateStr}?from=USD&to=INR`);
     if (!res.ok) return null;
     const data = await res.json();
     const rate = data?.rates?.INR;
