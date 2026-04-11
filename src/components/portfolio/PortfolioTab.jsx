@@ -176,89 +176,180 @@ function OverviewView({ enriched, totalNW }) {
 
 // ── Holdings ──────────────────────────────────────────────────────────────────
 
+const fmtINR = n => n == null ? "—" : `₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
+
+function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onClose }) {
+  if (!modal) return null;
+  const { label, holdings } = modal;
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000,
+      display:"flex", alignItems:"center", justifyContent:"center", padding:"20px" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:T.surface, borderRadius:"16px",
+        border:`1px solid ${T.border}`, width:"100%", maxWidth:"720px", maxHeight:"85vh",
+        overflow:"hidden", display:"flex", flexDirection:"column" }}>
+        <div style={{ padding:"16px 20px", borderBottom:`1px solid ${T.border}`,
+          display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span style={{ fontSize:"15px", fontWeight:700, color:T.text }}>{label}</span>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:T.textMuted,
+            fontSize:"22px", cursor:"pointer", lineHeight:1, padding:"0 4px" }}>×</button>
+        </div>
+        <div style={{ overflowY:"auto", padding:"14px", display:"flex", flexDirection:"column", gap:"10px" }}>
+          {holdings.map(h => (
+            <HoldingCard key={h.id} holding={h} priceMap={priceMap} usdinr={usdinr}
+              onDelete={onDelete} onUpdateBalance={onUpdateBalance}/>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance }) {
   const [expanded, setExpanded] = useState({});
+  const [modal,    setModal]    = useState(null);
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
-      {["Equity","Debt","Gold"].map(cat => {
-        const typeMap = grouped[cat];
-        if (!typeMap) return null;
-        const catHoldings = Object.values(typeMap).flat();
-        const catValue    = catHoldings.reduce((s, h) => s + (h.currentValue || 0), 0);
-        const catKey      = `cat-${cat}`;
-        const catOpen     = expanded[catKey] !== false; // default open
+    <>
+      <StockModal modal={modal} priceMap={priceMap} usdinr={usdinr}
+        onDelete={onDelete} onUpdateBalance={onUpdateBalance} onClose={()=>setModal(null)}/>
 
-        return (
-          <div key={cat} style={{ background:T.surface, borderRadius:"12px",
-            border:`1px solid ${T.border}`, overflow:"hidden" }}>
+      <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
+        {["Equity","Debt","Gold"].map(cat => {
+          const typeMap = grouped[cat];
+          if (!typeMap) return null;
+          const catHoldings = Object.values(typeMap).flat();
+          const catValue    = catHoldings.reduce((s, h) => s + (h.currentValue || 0), 0);
+          const catKey      = `cat-${cat}`;
+          const catOpen     = expanded[catKey] !== false;
 
-            {/* Category header */}
-            <div onClick={() => toggle(catKey)}
-              style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                padding:"14px 18px", cursor:"pointer", userSelect:"none",
-                borderBottom: catOpen ? `1px solid ${T.border}` : "none" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                <span style={{ fontSize:"14px", fontWeight:700, color:CAT_COLORS[cat]||T.text }}>{cat}</span>
-                <span style={{ fontSize:"11px", color:T.textMuted }}>
-                  {catHoldings.length} holding{catHoldings.length!==1?"s":""}
-                </span>
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"15px",
-                  fontWeight:700, color:T.text }}>{fmtL(catValue)}</span>
-                <span style={{ color:T.textMuted, fontSize:"13px" }}>{catOpen?"▲":"▼"}</span>
-              </div>
-            </div>
+          return (
+            <div key={cat} style={{ background:T.surface, borderRadius:"12px",
+              border:`1px solid ${T.border}`, overflow:"hidden" }}>
 
-            {catOpen && Object.entries(typeMap).map(([type, holdings]) => {
-              const typeKey  = `type-${cat}-${type}`;
-              const typeOpen = expanded[typeKey] !== false;
-              const typeVal  = holdings.reduce((s, h) => s + (h.currentValue || 0), 0);
-              const typeXirr = portfolioXIRR(holdings);
-              return (
-                <div key={type}>
-                  <div onClick={() => toggle(typeKey)}
-                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                      padding:"9px 18px 9px 28px", cursor:"pointer", userSelect:"none",
-                      background:T.card, borderBottom:`1px solid ${T.border}33` }}>
-                    <span style={{ fontSize:"12px", fontWeight:600, color:T.textDim }}>
-                      {TYPE_LABELS[type] || type}
-                    </span>
-                    <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                      {typeXirr !== null && (
-                        <span style={{ fontSize:"10px", fontWeight:700,
-                          color:typeXirr>=0?T.accent:T.red }}>
-                          XIRR {fmtXIRR(typeXirr)}
-                        </span>
-                      )}
-                      <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px",
-                        color:T.textDim }}>{fmtL(typeVal)}</span>
-                      <span style={{ color:T.textMuted, fontSize:"12px" }}>{typeOpen?"▲":"▼"}</span>
-                    </div>
-                  </div>
-                  {typeOpen && (
-                    <div style={{ display:"flex", flexDirection:"column", gap:"8px", padding:"10px 14px" }}>
-                      {holdings.map(h => (
-                        <HoldingCard key={h.id} holding={h} priceMap={priceMap} usdinr={usdinr}
-                          onDelete={onDelete} onUpdateBalance={onUpdateBalance}/>
-                      ))}
-                    </div>
-                  )}
+              {/* Category header */}
+              <div onClick={() => toggle(catKey)}
+                style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                  padding:"14px 18px", cursor:"pointer", userSelect:"none",
+                  borderBottom: catOpen ? `1px solid ${T.border}` : "none" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                  <span style={{ fontSize:"14px", fontWeight:700, color:CAT_COLORS[cat]||T.text }}>{cat}</span>
+                  <span style={{ fontSize:"11px", color:T.textMuted }}>
+                    {catHoldings.length} holding{catHoldings.length!==1?"s":""}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-        );
-      })}
+                <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"15px",
+                    fontWeight:700, color:T.text }}>{fmtL(catValue)}</span>
+                  <span style={{ color:T.textMuted, fontSize:"13px" }}>{catOpen?"▲":"▼"}</span>
+                </div>
+              </div>
 
-      {Object.keys(grouped).length === 0 && (
-        <div style={{ textAlign:"center", padding:"60px 20px", color:T.textMuted, fontSize:"14px" }}>
-          No holdings yet. Add one with the "+ Add Holding" button above.
-        </div>
-      )}
-    </div>
+              {catOpen && Object.entries(typeMap).map(([type, holdings]) => {
+                const typeKey  = `type-${cat}-${type}`;
+                const typeOpen = expanded[typeKey] !== false;
+                const typeVal  = holdings.reduce((s, h) => s + (h.currentValue || 0), 0);
+                const typeXirr = portfolioXIRR(holdings);
+
+                // Group by stock symbol / name
+                const byStock = {};
+                for (const h of holdings) {
+                  const k = h.symbol || h.name || h.id;
+                  if (!byStock[k]) byStock[k] = [];
+                  byStock[k].push(h);
+                }
+
+                return (
+                  <div key={type}>
+                    <div onClick={() => toggle(typeKey)}
+                      style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                        padding:"9px 18px 9px 28px", cursor:"pointer", userSelect:"none",
+                        background:T.card, borderBottom:`1px solid ${T.border}33` }}>
+                      <span style={{ fontSize:"12px", fontWeight:600, color:T.textDim }}>
+                        {TYPE_LABELS[type] || type}
+                      </span>
+                      <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                        {typeXirr !== null && (
+                          <span style={{ fontSize:"10px", fontWeight:700, color:typeXirr>=0?T.accent:T.red }}>
+                            XIRR {fmtXIRR(typeXirr)}
+                          </span>
+                        )}
+                        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", color:T.textDim }}>
+                          {fmtL(typeVal)}
+                        </span>
+                        <span style={{ color:T.textMuted, fontSize:"12px" }}>{typeOpen?"▲":"▼"}</span>
+                      </div>
+                    </div>
+
+                    {typeOpen && (
+                      <div style={{ display:"flex", flexDirection:"column", gap:"8px", padding:"10px 14px" }}>
+                        {Object.entries(byStock).map(([sym, lots]) => {
+                          const totalQty  = lots.reduce((s,h)=>s+(Number(h.quantity)||0), 0);
+                          const totalCost = lots.reduce((s,h)=>s+(h.costBasisINR||h.balance||0), 0);
+                          const totalVal  = lots.reduce((s,h)=>s+(h.currentValue||0), 0);
+                          const gain      = totalVal - totalCost;
+                          const gainPct   = totalCost > 0 ? gain/totalCost*100 : null;
+                          const xirr      = portfolioXIRR(lots);
+                          const gc        = gain >= 0 ? T.accent : T.red;
+                          return (
+                            <div key={sym}
+                              onClick={()=>setModal({ label:`${sym} · ${lots.length} lot${lots.length!==1?"s":""}`, holdings:lots })}
+                              onMouseEnter={e=>e.currentTarget.style.borderColor=T.accent+"88"}
+                              onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}
+                              style={{ padding:"14px 16px", background:T.bg, borderRadius:"10px",
+                                border:`1px solid ${T.border}`, cursor:"pointer", transition:"border-color 0.15s" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                                <div>
+                                  <div style={{ fontSize:"15px", fontWeight:700, color:T.text }}>{sym}</div>
+                                  {totalQty>0 && <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"2px" }}>
+                                    {totalQty % 1===0 ? totalQty : totalQty.toFixed(4).replace(/0+$/,"")} shares · {lots.length} lot{lots.length!==1?"s":""}
+                                  </div>}
+                                </div>
+                                <div style={{ textAlign:"right" }}>
+                                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"17px", fontWeight:800, color:T.text }}>{fmtL(totalVal)}</div>
+                                  <div style={{ fontSize:"12px", color:gc, fontWeight:600, marginTop:"2px" }}>
+                                    {gain>=0?"+":"-"}{fmtINR(gain)}{gainPct!==null?` (${gainPct>=0?"+":""}${gainPct.toFixed(1)}%)`:""}
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ display:"flex", gap:"20px", marginTop:"10px", flexWrap:"wrap" }}>
+                                <div>
+                                  <div style={{ fontSize:"10px", color:T.textMuted, marginBottom:"2px" }}>Invested</div>
+                                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", color:T.textDim, fontWeight:600 }}>{fmtL(totalCost)}</div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize:"10px", color:T.textMuted, marginBottom:"2px" }}>Abs. Gain/Loss</div>
+                                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", color:gc, fontWeight:600 }}>{gain>=0?"+":"-"}{fmtL(Math.abs(gain))}</div>
+                                </div>
+                                {xirr!==null && (
+                                  <div>
+                                    <div style={{ fontSize:"10px", color:T.textMuted, marginBottom:"2px" }}>XIRR</div>
+                                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", color:xirr>=0?T.accent:T.red, fontWeight:700 }}>{fmtXIRR(xirr)}</div>
+                                  </div>
+                                )}
+                                <div style={{ marginLeft:"auto", fontSize:"10px", color:T.textMuted, alignSelf:"flex-end" }}>
+                                  tap for lots →
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+
+        {Object.keys(grouped).length === 0 && (
+          <div style={{ textAlign:"center", padding:"60px 20px", color:T.textMuted, fontSize:"14px" }}>
+            No holdings yet. Add one with the "+ Add Holding" button above.
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
