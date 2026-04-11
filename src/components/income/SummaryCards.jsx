@@ -7,7 +7,7 @@ export default function SummaryCards({ incomeData, rsuData, investmentsData, fy 
   const totalTH       = sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.take_home));
   const empEPF        = sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.epf));
   const epfOpening    = investmentsData?.[fy]?.epfOpening || { Selva:0, Akshaya:0 };
-  const totalEPF      = (epfOpening.Selva + epfOpening.Akshaya) + empEPF * 2;
+  const totalEPF      = (epfOpening.Selva + epfOpening.Akshaya) + empEPF;
   const totalESPPINR  = sum((p,mi)=>getEsspINR(incomeData?.[fy]?.[p]?.[mi]));
   const totalESPPSh   = sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.espp_shares)||0);
   const totalRSUSh    = sum((p,mi)=>Number(incomeData?.[fy]?.[p]?.[mi]?.rsu_net_shares)||0);

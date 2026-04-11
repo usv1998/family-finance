@@ -43,9 +43,9 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
     const opening = epfOpening[p] || 0;
     const running = MONTHS.map((_,mi) => {
       const cum = monthly.slice(0,mi+1).reduce((s,v)=>s+v,0);
-      return opening + cum * 2;
+      return opening + cum;
     });
-    return { person:p, monthly, empYTD, emplYTD, opening, total: opening + empYTD + emplYTD, running };
+    return { person:p, monthly, opening, total: opening + empYTD, running };
   });
   const epfGrand = epfByPerson.reduce((s,e)=>s+e.total, 0);
 
@@ -128,7 +128,7 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                 <span style={{ fontSize:"11px", color:T.textMuted }}>{EMPLOYER[e.person]}</span>
               </div>
               <div style={{ display:"flex", gap:"12px" }}>
-                <div style={{ textAlign:"right" }}><div style={{ fontSize:"10px", color:T.textMuted }}>FY Contributions</div><div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.blue, fontWeight:700 }}>{fmtINR(e.empYTD+e.emplYTD)}</div></div>
+                <div style={{ textAlign:"right" }}><div style={{ fontSize:"10px", color:T.textMuted }}>FY Contributions</div><div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.blue, fontWeight:700 }}>{fmtINR(e.empYTD)}</div></div>
                 <div style={{ textAlign:"right" }}><div style={{ fontSize:"10px", color:T.textMuted }}>Corpus (incl. opening)</div><div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:700 }}>{fmtINR(e.total)}</div></div>
               </div>
             </div>
@@ -143,14 +143,9 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                 </thead>
                 <tbody>
                   <tr>
-                    <td style={{ padding:"4px 8px", color:T.textDim }}>Employee</td>
+                    <td style={{ padding:"4px 8px", color:T.textDim }}>Total Contribution</td>
                     {e.monthly.map((v,i)=><td key={i} style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:v>0?T.text:T.textMuted }}>{v>0?fmtINR(v):"—"}</td>)}
                     <td style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.blue, fontWeight:700 }}>{fmtINR(e.empYTD)}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding:"4px 8px", color:T.textDim }}>Employer</td>
-                    {e.monthly.map((v,i)=><td key={i} style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:v>0?T.text:T.textMuted }}>{v>0?fmtINR(v):"—"}</td>)}
-                    <td style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.blue, fontWeight:700 }}>{fmtINR(e.emplYTD)}</td>
                   </tr>
                   <tr style={{ borderTop:`1px solid ${T.border}` }}>
                     <td style={{ padding:"4px 8px", color:T.accent, fontWeight:700 }}>Running Corpus</td>

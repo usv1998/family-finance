@@ -7,7 +7,7 @@
  * Sources:
  *   rsuData        → RSU vest lots (one per vest event, net shares after tax)
  *   incomeData     → ESPP lots     (one per month with espp_shares > 0)
- *   incomeData +   → EPF balance   (one per person: opening + cumulative monthly × 2)
+ *   incomeData +   → EPF balance   (one per person: opening + cumulative monthly total)
  *   investmentsData
  *   investmentsData → Long-term Goals (savedAmount as portfolio holding)
  */
@@ -105,8 +105,8 @@ function deriveESPPLots(incomeData) {
 // ── EPF ────────────────────────────────────────────────────────────────────
 
 /**
- * EPF balance = opening (from the earliest FY's investmentsData) + cumulative monthly × 2
- * (monthly epf in incomeData = employee contribution; employer matches 1:1)
+ * EPF balance = opening + cumulative monthly EPF contributions
+ * (the epf field in incomeData is the total contribution: employee + employer + VPF)
  */
 function deriveEPF(incomeData, investmentsData) {
   return PERSONS.map(person => {
@@ -117,13 +117,13 @@ function deriveEPF(incomeData, investmentsData) {
       if (val != null) { opening = val; break; }
     }
 
-    // Sum all monthly EPF contributions (employee share; employer = same, so ×2)
+    // Sum all monthly EPF contributions (total: employee + employer + VPF)
     let totalContrib = 0;
     for (const fy of Object.keys(incomeData || {}).filter(k => k.startsWith("FY"))) {
       const months = incomeData[fy]?.[person] || {};
       for (const [miStr, d] of Object.entries(months)) {
         if (!atOrBeforeNow(miToDate(fy, Number(miStr)))) continue;  // future month
-        totalContrib += Number(d.epf || 0) * 2;
+        totalContrib += Number(d.epf || 0);
       }
     }
 
