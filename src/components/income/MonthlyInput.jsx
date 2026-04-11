@@ -1,5 +1,5 @@
 import { T } from "../../lib/theme";
-export default function MonthlyInput({ data, onChange, person }) {
+export default function MonthlyInput({ data, onChange, person, onCopyFieldToAll }) {
   const isSelva = person === "Selva";
   const fields = [
     { key:"take_home",      label:"Take-Home (₹)",    placeholder:"e.g. 185000" },
@@ -23,7 +23,14 @@ export default function MonthlyInput({ data, onChange, person }) {
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:"12px" }}>
         {fields.map(f=>(
           <div key={f.key}>
-            <label style={{ fontSize:"11px", color:T.textDim, fontWeight:600, display:"block", marginBottom:"4px" }}>{f.label}</label>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"4px" }}>
+              <label style={{ fontSize:"11px", color:T.textDim, fontWeight:600 }}>{f.label}</label>
+              {onCopyFieldToAll && data?.[f.key] != null && data?.[f.key] !== "" && (
+                <button onClick={()=>onCopyFieldToAll(f.key, data[f.key])}
+                  style={{ fontSize:"10px", color:T.textMuted, background:"none", border:"none", cursor:"pointer", padding:"0 2px", fontWeight:600 }}
+                  title={`Copy this value to all months`}>→ all</button>
+              )}
+            </div>
             <input type={f.date?"date":"number"} value={data?.[f.key]??""} placeholder={f.placeholder}
               onChange={e=>onChange({...data,[f.key]:e.target.value})}
               style={inp}

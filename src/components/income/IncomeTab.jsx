@@ -102,21 +102,11 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
             </div>
             {editMonth!==null&&(
               <div style={{ background:T.card, borderRadius:"12px", padding:"20px", border:`1px solid ${T.border}` }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"16px", flexWrap:"wrap", gap:"8px" }}>
-                  <h4 style={{ margin:0, fontSize:"14px", color:T.text }}>
-                    <span style={{ color:editPerson==="Selva"?T.selva:T.akshaya, fontWeight:700 }}>{editPerson}</span>{" · "}{MONTH_FULL[editMonth]} Income
-                  </h4>
-                  <button
-                    onClick={()=>{
-                      const cur = incomeData?.[fy]?.[editPerson]?.[editMonth] || {};
-                      if (!window.confirm(`Copy ${MONTH_FULL[editMonth]} values to all 12 months for ${editPerson}?`)) return;
-                      MONTHS.forEach((_,mi) => onUpdateIncome(editPerson, mi, { ...cur }));
-                    }}
-                    style={{ padding:"6px 14px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", cursor:"pointer", fontWeight:600 }}>
-                    Copy to all months ↓
-                  </button>
-                </div>
-                <MonthlyInput data={incomeData?.[fy]?.[editPerson]?.[editMonth]||{}} onChange={d=>onUpdateIncome(editPerson,editMonth,d)} person={editPerson} monthIdx={editMonth}/>
+                <h4 style={{ margin:"0 0 16px", fontSize:"14px", color:T.text }}>
+                  <span style={{ color:editPerson==="Selva"?T.selva:T.akshaya, fontWeight:700 }}>{editPerson}</span>{" · "}{MONTH_FULL[editMonth]} Income
+                </h4>
+                <MonthlyInput data={incomeData?.[fy]?.[editPerson]?.[editMonth]||{}} onChange={d=>onUpdateIncome(editPerson,editMonth,d)} person={editPerson} monthIdx={editMonth}
+                  onCopyFieldToAll={(key,val)=>{ MONTHS.forEach((_,mi)=>{ const cur=incomeData?.[fy]?.[editPerson]?.[mi]||{}; onUpdateIncome(editPerson,mi,{...cur,[key]:val}); }); }}/>
                 <AdHocItems items={incomeData?.[fy]?.[editPerson]?.[editMonth]?.ad_hoc||[]}
                   onChange={items=>{const cur=incomeData?.[fy]?.[editPerson]?.[editMonth]||{};onUpdateIncome(editPerson,editMonth,{...cur,ad_hoc:items});}}/>
               </div>
