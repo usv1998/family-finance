@@ -190,6 +190,23 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next);
   };
 
+  // Bulk upsert from CAS import: match by schemeCode + person → update; else add new.
+  const upsertHoldings = (person, items) => {
+    let next = [...holdingsData];
+    for (const item of items) {
+      const idx = next.findIndex(h =>
+        h.type === "mf" && h.schemeCode === item.schemeCode && h.person === person
+      );
+      if (idx >= 0) {
+        next[idx] = { ...next[idx], units: item.units, costBasisINR: item.costBasisINR };
+      } else {
+        next = [...next, item];
+      }
+    }
+    setHoldingsData(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next);
+  };
+
   if(!authReady || (supabase && !user)) return supabase && !user && authReady ? <LoginScreen/> : <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
   if(loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
 
@@ -294,6 +311,7 @@ export default function FamilyFinanceTracker() {
             onAddHolding={addHolding}
             onDeleteHolding={deleteHolding}
             onUpdateHolding={updateHolding}
+            onUpsertHoldings={upsertHoldings}
             onAddRsuEvent={addRsuEvent}
             onDeleteRsuEvent={deleteRsuEvent}
             onAddRsuGrant={addRsuGrant}

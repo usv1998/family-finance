@@ -12,7 +12,7 @@ function Badge({ label, color }) {
   );
 }
 
-export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpdateBalance }) {
+export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived }) {
   const [editBal, setEditBal] = useState(false);
   const [balDraft, setBalDraft] = useState(holding.balance || 0);
 
@@ -188,11 +188,16 @@ export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpd
               fontSize:"13px", opacity:0.5, marginTop:"4px", padding:"2px 4px" }}
             title="Remove holding">✕ Remove</button>
         )}
-        {holding.derived && (
+        {holding.derived && holding.source === "rsu" && onDeleteDerived ? (
+          <button onClick={() => { if(window.confirm("Remove this RSU lot from portfolio?")) onDeleteDerived(holding); }}
+            style={{ background:"none", border:"none", color:T.red, cursor:"pointer",
+              fontSize:"13px", opacity:0.5, marginTop:"4px", padding:"2px 4px" }}
+            title="Remove RSU lot">✕ Remove</button>
+        ) : holding.derived ? (
           <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"4px", fontStyle:"italic" }}>
             auto-computed
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

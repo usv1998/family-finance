@@ -5,6 +5,7 @@ import { portfolioXIRR } from "../../lib/xirr";
 import { fetchAllPrices, getCurrentValueINR } from "../../lib/priceService";
 import AddHoldingForm from "./AddHoldingForm";
 import HoldingCard from "./HoldingCard";
+import CasImportModal from "./CasImportModal";
 import RsuTab from "../rsu/RsuTab";
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -178,7 +179,7 @@ function OverviewView({ enriched, totalNW }) {
 
 const fmtINR = n => n == null ? "—" : `₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
 
-function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onClose }) {
+function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived, onClose }) {
   if (!modal) return null;
   const { label, holdings } = modal;
   return (
@@ -196,7 +197,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onClos
         <div style={{ overflowY:"auto", padding:"14px", display:"flex", flexDirection:"column", gap:"10px" }}>
           {holdings.map(h => (
             <HoldingCard key={h.id} holding={h} priceMap={priceMap} usdinr={usdinr}
-              onDelete={onDelete} onUpdateBalance={onUpdateBalance}/>
+              onDelete={onDelete} onUpdateBalance={onUpdateBalance} onDeleteDerived={onDeleteDerived}/>
           ))}
         </div>
       </div>
@@ -204,15 +205,21 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onClos
   );
 }
 
-function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance }) {
+function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived }) {
   const [expanded, setExpanded] = useState({});
   const [modal,    setModal]    = useState(null);
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
 
+  const handleDeleteDerived = (h) => {
+    onDeleteDerived(h);
+    setModal(null);
+  };
+
   return (
     <>
       <StockModal modal={modal} priceMap={priceMap} usdinr={usdinr}
-        onDelete={onDelete} onUpdateBalance={onUpdateBalance} onClose={()=>setModal(null)}/>
+        onDelete={onDelete} onUpdateBalance={onUpdateBalance}
+        onDeleteDerived={handleDeleteDerived} onClose={()=>setModal(null)}/>
 
       <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
         {["Equity","Debt","Gold"].map(cat => {
@@ -357,11 +364,12 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance }) 
 
 export default function PortfolioTab({
   holdingsData, rsuData, incomeData, investmentsData, rsuGrants, liveData, fy,
-  onAddHolding, onDeleteHolding, onUpdateHolding,
+  onAddHolding, onDeleteHolding, onUpdateHolding, onUpsertHoldings,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
-  const [view,        setView]        = useState("overview");
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [view,          setView]          = useState("overview");
+  const [showAddForm,   setShowAddForm]   = useState(false);
+  const [showCasImport, setShowCasImport] = useState(false);
   const [priceMap,    setPriceMap]    = useState({});
   const [fetching,    setFetching]    = useState(false);
   const [fetchedAt,   setFetchedAt]   = useState(null);
@@ -453,11 +461,18 @@ export default function PortfolioTab({
             {fetching ? "…" : "↻ Refresh"}
           </button>
           {view==="holdings" && (
-            <button onClick={() => setShowAddForm(v => !v)}
-              style={{ padding:"6px 14px", background:T.accent, border:"none",
-                borderRadius:"8px", color:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
-              {showAddForm ? "✕ Cancel" : "+ Add Holding"}
-            </button>
+            <>
+              <button onClick={() => setShowCasImport(true)}
+                style={{ padding:"6px 14px", background:T.card, border:`1px solid ${T.border}`,
+                  borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+                ⬆ Import CAS
+              </button>
+              <button onClick={() => setShowAddForm(v => !v)}
+                style={{ padding:"6px 14px", background:T.accent, border:"none",
+                  borderRadius:"8px", color:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
+                {showAddForm ? "✕ Cancel" : "+ Add Holding"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -468,11 +483,21 @@ export default function PortfolioTab({
           onClose={() => setShowAddForm(false)}/>
       )}
 
+      {showCasImport && (
+        <CasImportModal
+          holdingsData={holdingsData}
+          onImport={onUpsertHoldings}
+          onClose={() => setShowCasImport(false)}/>
+      )}
+
       {view==="overview" && <OverviewView enriched={enriched} totalNW={totalNW}/>}
       {view==="holdings" && (
         <HoldingsView grouped={grouped} priceMap={priceMap} usdinr={usdinr}
           onDelete={onDeleteHolding}
-          onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}/>
+          onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}
+          onDeleteDerived={h => {
+            if (h.source === "rsu") onDeleteRsuEvent(h.id.replace("derived-rsu-", ""));
+          }}/>
       )}
       {view==="grants" && (
         <RsuTab
