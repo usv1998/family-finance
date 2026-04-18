@@ -1,22 +1,68 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { T } from "../lib/theme";
+import { isBiometricSupported, isBiometricEnrolled, enrollBiometric } from "../lib/biometric";
 
 export default function LoginScreen() {
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [loading,  setLoading]  = useState(false);
+  // After successful login, offer biometric enrollment if not yet enrolled
+  const [offerBiometric, setOfferBiometric] = useState(false);
+  const [enrolling,      setEnrolling]      = useState(false);
+  const [enrolledEmail,  setEnrolledEmail]  = useState("");
 
   const login = async () => {
     if (!email || !password) return;
     setLoading(true); setError("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setError(error.message);
+    } else if (isBiometricSupported() && !isBiometricEnrolled()) {
+      // Offer fingerprint enrollment before the app mounts
+      setEnrolledEmail(data.user?.email || email);
+      setOfferBiometric(true);
+    }
     setLoading(false);
   };
 
+  const handleEnroll = async () => {
+    setEnrolling(true);
+    try {
+      await enrollBiometric(enrolledEmail);
+    } catch (e) {
+      // Enrollment failed or was cancelled — just proceed without it
+    }
+    setEnrolling(false);
+    // Either way the supabase auth state change will mount the app
+  };
+
   const inp = { padding:"10px 14px", background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"14px", outline:"none", width:"100%", boxSizing:"border-box" };
+
+  if (offerBiometric) {
+    return (
+      <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',-apple-system,sans-serif" }}>
+        <div style={{ background:T.surface, borderRadius:"16px", padding:"40px 36px", border:`1px solid ${T.border}`, width:"100%", maxWidth:"360px", textAlign:"center" }}>
+          <div style={{ fontSize:"48px", marginBottom:"16px" }}>🔒</div>
+          <h2 style={{ margin:"0 0 8px", fontSize:"18px", fontWeight:800, color:T.text }}>Enable Fingerprint Login?</h2>
+          <p style={{ margin:"0 0 28px", fontSize:"13px", color:T.textMuted, lineHeight:1.6 }}>
+            Next time you open the app, you can unlock with your fingerprint instead of typing your password.
+          </p>
+          <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
+            <button onClick={handleEnroll} disabled={enrolling}
+              style={{ padding:"12px", background:T.accent, border:"none", borderRadius:"8px", color:T.bg, fontSize:"14px", fontWeight:700, cursor:enrolling?"default":"pointer", opacity:enrolling?0.7:1 }}>
+              {enrolling ? "Setting up…" : "Enable Fingerprint"}
+            </button>
+            <button onClick={() => setOfferBiometric(false)}
+              style={{ padding:"12px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
+              Not now
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',-apple-system,sans-serif" }}>

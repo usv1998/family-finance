@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { TABS, EMPLOYER, LIVE_DEFAULTS } from "./lib/constants";
+import { isBiometricEnrolled, clearBiometricEnrollment } from "./lib/biometric";
 import { T } from "./lib/theme";
 import { getCurrentFY, getFYOptions } from "./lib/formatters";
 import { loadData, saveData } from "./lib/storage";
@@ -9,6 +10,7 @@ import { fetchLiveData } from "./lib/marketData";
 
 import LiveStrip from "./components/LiveStrip";
 import LoginScreen from "./components/LoginScreen";
+import LockScreen from "./components/LockScreen";
 import IncomeTab from "./components/income/IncomeTab";
 import InvestmentsTab from "./components/investments/InvestmentsTab";
 import ExpensesTab from "./components/expenses/ExpensesTab";
@@ -32,6 +34,7 @@ export default function FamilyFinanceTracker() {
   const [user,           setUser]           = useState(null);
   const [authReady,      setAuthReady]      = useState(!supabase); // true immediately if no supabase
   const [syncing,        setSyncing]        = useState(false);
+  const [locked,         setLocked]         = useState(false);
   const saveRef = useRef(null);
   const userRef = useRef(null);
 
@@ -64,6 +67,8 @@ export default function FamilyFinanceTracker() {
     supabase.auth.getSession().then(({ data:{ session } })=>{
       setUser(session?.user ?? null);
       userRef.current = session?.user ?? null;
+      // Lock on app open if session exists and biometric is enrolled
+      if (session?.user && isBiometricEnrolled()) setLocked(true);
       setAuthReady(true);
     });
     const { data:{ subscription } } = supabase.auth.onAuthStateChange((_e, session)=>{
@@ -259,6 +264,14 @@ export default function FamilyFinanceTracker() {
 
   if(!authReady || (supabase && !user)) return supabase && !user && authReady ? <LoginScreen/> : <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
   if(loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
+  if(locked) return (
+    <LockScreen
+      onUnlock={() => setLocked(false)}
+      onSignOut={() => {
+        clearBiometricEnrollment();
+        supabase?.auth.signOut();
+      }}/>
+  );
 
   const selectStyle={padding:"8px 14px",background:T.card,border:`1px solid ${T.border}`,borderRadius:"8px",color:T.text,fontSize:"13px",outline:"none",cursor:"pointer",appearance:"none",fontWeight:600};
 
