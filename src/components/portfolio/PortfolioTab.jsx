@@ -179,7 +179,7 @@ function OverviewView({ enriched, totalNW }) {
 
 const fmtINR = n => n == null ? "—" : `₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
 
-function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived, onClose }) {
+function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateCategory, onDeleteDerived, onClose }) {
   if (!modal) return null;
   const { label, holdings } = modal;
   return (
@@ -197,7 +197,8 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
         <div style={{ overflowY:"auto", padding:"14px", display:"flex", flexDirection:"column", gap:"10px" }}>
           {holdings.map(h => (
             <HoldingCard key={h.id} holding={h} priceMap={priceMap} usdinr={usdinr}
-              onDelete={onDelete} onUpdateBalance={onUpdateBalance} onDeleteDerived={onDeleteDerived}/>
+              onDelete={onDelete} onUpdateBalance={onUpdateBalance}
+              onUpdateCategory={onUpdateCategory} onDeleteDerived={onDeleteDerived}/>
           ))}
         </div>
       </div>
@@ -205,7 +206,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
   );
 }
 
-function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived }) {
+function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateCategory, onDeleteDerived }) {
   const [expanded, setExpanded] = useState({});
   const [modal,    setModal]    = useState(null);
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
@@ -218,7 +219,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
   return (
     <>
       <StockModal modal={modal} priceMap={priceMap} usdinr={usdinr}
-        onDelete={onDelete} onUpdateBalance={onUpdateBalance}
+        onDelete={onDelete} onUpdateBalance={onUpdateBalance} onUpdateCategory={onUpdateCategory}
         onDeleteDerived={handleDeleteDerived} onClose={()=>setModal(null)}/>
 
       <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
@@ -414,7 +415,7 @@ export default function PortfolioTab({
     // Baby Fund and Debt Funds are Debt regardless of their mf type
     category: h.source === "goal"
       ? "Debt"
-      : (CATEGORY_MAP[h.type] || "Other"),
+      : h.categoryOverride || CATEGORY_MAP[h.type] || "Other",
   })), [allHoldings, priceMap, usdinr]);
 
   const totalNW = enriched.reduce((s, h) => s + (h.currentValue || 0), 0);
@@ -495,6 +496,7 @@ export default function PortfolioTab({
         <HoldingsView grouped={grouped} priceMap={priceMap} usdinr={usdinr}
           onDelete={onDeleteHolding}
           onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}
+          onUpdateCategory={(id, cat) => onUpdateHolding(id, { categoryOverride: cat || undefined })}
           onDeleteDerived={h => {
             if (h.source === "rsu") onDeleteRsuEvent(h.id.replace("derived-rsu-", ""));
           }}/>

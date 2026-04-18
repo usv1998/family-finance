@@ -20,6 +20,7 @@ const EMPTY = {
   principal:"", interestRate:"", startDate:"", maturityDate:"",
   balance:"", notes:"",
   acquisitionDate:"", acquisitionPrice:"", acquisitionUSDINR:"",
+  categoryOverride:"",
 };
 
 const inp = {
@@ -103,6 +104,7 @@ export default function AddHoldingForm({ onAdd, onClose }) {
         h.schemeCode = form.schemeCode;
         h.units = Number(form.units);
         h.costBasisINR = Number(form.costBasisINR) || 0;
+        if (form.categoryOverride) h.categoryOverride = form.categoryOverride;
         break;
       case "fd":
         if (!form.principal || !form.interestRate || !form.startDate) return;
@@ -289,6 +291,23 @@ export default function AddHoldingForm({ onAdd, onClose }) {
               </span>
             </div>
           )}
+          <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+            {label("ASSET CLASS")}
+            {["", "Equity", "Debt", "Gold"].map(cat => (
+              <button key={cat} type="button" onClick={() => set("categoryOverride", cat)}
+                style={{ padding:"4px 14px", borderRadius:"7px", border:"none", cursor:"pointer",
+                  fontSize:"12px", fontWeight:600,
+                  background: form.categoryOverride === cat ? T.accent : T.card,
+                  color:      form.categoryOverride === cat ? T.bg     : T.textDim }}>
+                {cat || "Auto"}
+              </button>
+            ))}
+            {form.categoryOverride && (
+              <span style={{ fontSize:"11px", color:T.textMuted }}>
+                (overrides default Equity)
+              </span>
+            )}
+          </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px" }}>
             <div>
               {label("UNITS HELD")}
