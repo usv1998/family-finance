@@ -41,7 +41,7 @@ export default function LockScreen({ onUnlock, onSignOut }) {
           fontSize:"28px", fontWeight:800, color:T.bg, margin:"0 auto 20px" }}>₹</div>
 
         <h2 style={{ margin:"0 0 6px", fontSize:"20px", fontWeight:800, color:T.text }}>
-          Family Finance
+          DudduKaasu
         </h2>
         <p style={{ margin:"0 0 32px", fontSize:"13px", color:T.textMuted }}>
           Unlock to continue

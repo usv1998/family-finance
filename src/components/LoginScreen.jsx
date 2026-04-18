@@ -69,8 +69,8 @@ export default function LoginScreen() {
       <div style={{ background:T.surface, borderRadius:"16px", padding:"40px 36px", border:`1px solid ${T.border}`, width:"100%", maxWidth:"360px" }}>
         <div style={{ textAlign:"center", marginBottom:"28px" }}>
           <div style={{ width:"52px", height:"52px", borderRadius:"14px", background:`linear-gradient(135deg,${T.accent},${T.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"26px", fontWeight:800, color:T.bg, margin:"0 auto 14px" }}>₹</div>
-          <h1 style={{ margin:0, fontSize:"20px", fontWeight:800, color:T.text, letterSpacing:"-0.3px" }}>Family Finance</h1>
-          <p style={{ margin:"6px 0 0", fontSize:"13px", color:T.textMuted }}>Selva & Akshaya · Sign in to sync your data</p>
+          <h1 style={{ margin:0, fontSize:"20px", fontWeight:800, color:T.text, letterSpacing:"-0.3px" }}>DudduKaasu</h1>
+          <p style={{ margin:"6px 0 0", fontSize:"13px", color:T.textMuted }}>One Stop Finance App · Sign in to sync your data</p>
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
           <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" style={inp} onKeyDown={e=>e.key==="Enter"&&login()}/>

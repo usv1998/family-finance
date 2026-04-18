@@ -298,8 +298,8 @@ export default function FamilyFinanceTracker() {
             <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
               <div style={{ width:"36px", height:"36px", borderRadius:"10px", background:`linear-gradient(135deg,${T.accent},${T.blue})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"18px", fontWeight:800, color:T.bg }}>₹</div>
               <div>
-                <h1 style={{ margin:0, fontSize:"18px", fontWeight:800, letterSpacing:"-0.3px" }}>Family Finance Tracker</h1>
-                <p style={{ margin:0, fontSize:"11px", color:T.textMuted }}>Selva & Akshaya · {EMPLOYER.Selva} + {EMPLOYER.Akshaya}</p>
+                <h1 style={{ margin:0, fontSize:"18px", fontWeight:800, letterSpacing:"-0.3px" }}>DudduKaasu</h1>
+                <p style={{ margin:0, fontSize:"11px", color:T.textMuted }}>One Stop Finance App</p>
               </div>
             </div>
             <div style={{ display:"flex", gap:"10px", alignItems:"center", flexWrap:"wrap" }}>
@@ -392,7 +392,7 @@ export default function FamilyFinanceTracker() {
       </div>
 
       <div style={{ padding:"16px 20px", borderTop:`1px solid ${T.border}`, textAlign:"center", color:T.textMuted, fontSize:"11px" }}>
-        Family Finance Tracker v1.6 · Portfolio: auto-derived + XIRR · Data synced across devices
+        DudduKaasu v1.6 · Portfolio: auto-derived + XIRR · Data synced across devices
       </div>
     </div>
   );

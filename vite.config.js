@@ -14,9 +14,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Family Finance Tracker',
-        short_name: 'FinTracker',
-        description: 'Selva & Akshaya — Microsoft + Nvidia income tracker',
+        name: 'DudduKaasu',
+        short_name: 'DudduKaasu',
+        description: 'One Stop Finance App',
         theme_color: '#0B1120',
         background_color: '#0B1120',
         display: 'standalone',

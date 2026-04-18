@@ -35,7 +35,7 @@ export async function enrollBiometric(userEmail) {
   const cred = await navigator.credentials.create({
     publicKey: {
       challenge,
-      rp: { name: "Family Finance", id: window.location.hostname },
+      rp: { name: "DudduKaasu", id: window.location.hostname },
       user: { id: userId, name: userEmail, displayName: userEmail },
       pubKeyCredParams: [
         { type: "public-key", alg: -7  },  // ES256
