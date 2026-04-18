@@ -179,7 +179,7 @@ function OverviewView({ enriched, totalNW }) {
 
 const fmtINR = n => n == null ? "—" : `₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
 
-function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateCategory, onDeleteDerived, onClose }) {
+function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived, onClose }) {
   if (!modal) return null;
   const { label, holdings } = modal;
   return (
@@ -198,7 +198,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onUpda
           {holdings.map(h => (
             <HoldingCard key={h.id} holding={h} priceMap={priceMap} usdinr={usdinr}
               onDelete={onDelete} onUpdateBalance={onUpdateBalance}
-              onUpdateCategory={onUpdateCategory} onDeleteDerived={onDeleteDerived}/>
+              onDeleteDerived={onDeleteDerived}/>
           ))}
         </div>
       </div>
@@ -206,7 +206,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onUpda
   );
 }
 
-function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateCategory, onDeleteDerived }) {
+function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateFundCategory, onDeleteDerived }) {
   const [expanded, setExpanded] = useState({});
   const [modal,    setModal]    = useState(null);
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
@@ -219,7 +219,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
   return (
     <>
       <StockModal modal={modal} priceMap={priceMap} usdinr={usdinr}
-        onDelete={onDelete} onUpdateBalance={onUpdateBalance} onUpdateCategory={onUpdateCategory}
+        onDelete={onDelete} onUpdateBalance={onUpdateBalance}
         onDeleteDerived={handleDeleteDerived} onClose={()=>setModal(null)}/>
 
       <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
@@ -320,7 +320,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
                                   </div>
                                 </div>
                               </div>
-                              <div style={{ display:"flex", gap:"20px", marginTop:"10px", flexWrap:"wrap" }}>
+                              <div style={{ display:"flex", gap:"20px", marginTop:"10px", flexWrap:"wrap", alignItems:"flex-end" }}>
                                 <div>
                                   <div style={{ fontSize:"10px", color:T.textMuted, marginBottom:"2px" }}>Invested</div>
                                   <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", color:T.textDim, fontWeight:600 }}>{fmtL(totalCost)}</div>
@@ -333,6 +333,26 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
                                   <div>
                                     <div style={{ fontSize:"10px", color:T.textMuted, marginBottom:"2px" }}>XIRR</div>
                                     <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", color:xirr>=0?T.accent:T.red, fontWeight:700 }}>{fmtXIRR(xirr)}</div>
+                                  </div>
+                                )}
+                                {/* MF-only: fund-level category override */}
+                                {type === "mf" && !lots.every(l => l.derived) && onUpdateFundCategory && (
+                                  <div onClick={e => e.stopPropagation()}
+                                    style={{ display:"flex", gap:"4px", alignItems:"center", marginLeft:"4px" }}>
+                                    {["Equity","Debt","Gold"].map(cat => {
+                                      const current = lots[0]?.categoryOverride || "Equity";
+                                      const active = current === cat;
+                                      return (
+                                        <button key={cat}
+                                          onClick={() => onUpdateFundCategory(lots[0]?.schemeCode, lots[0]?.person, active ? "" : cat)}
+                                          style={{ padding:"2px 8px", borderRadius:"5px", border:"none", cursor:"pointer",
+                                            fontSize:"10px", fontWeight:700,
+                                            background: active ? T.amber : T.card,
+                                            color:      active ? T.bg    : T.textMuted }}>
+                                          {cat}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 )}
                                 <div style={{ marginLeft:"auto", fontSize:"10px", color:T.textMuted, alignSelf:"flex-end" }}>
@@ -496,7 +516,14 @@ export default function PortfolioTab({
         <HoldingsView grouped={grouped} priceMap={priceMap} usdinr={usdinr}
           onDelete={onDeleteHolding}
           onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}
-          onUpdateCategory={(id, cat) => onUpdateHolding(id, { categoryOverride: cat || undefined })}
+          onUpdateFundCategory={(schemeCode, person, cat) => {
+            // Apply to every lot of this fund (same schemeCode + person)
+            for (const h of holdingsData) {
+              if (h.type === "mf" && h.schemeCode === schemeCode && h.person === person) {
+                onUpdateHolding(h.id, { categoryOverride: cat || undefined });
+              }
+            }
+          }}
           onDeleteDerived={h => {
             if (h.source === "rsu") onDeleteRsuEvent(h.id.replace("derived-rsu-", ""));
           }}/>

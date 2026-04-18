@@ -12,7 +12,7 @@ function Badge({ label, color }) {
   );
 }
 
-export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateCategory, onDeleteDerived }) {
+export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived }) {
   const [editBal, setEditBal] = useState(false);
   const [balDraft, setBalDraft] = useState(holding.balance || 0);
 
@@ -178,24 +178,6 @@ export default function HoldingCard({ holding, priceMap, usdinr, onDelete, onUpd
           <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"11px", fontWeight:700,
             color:xirrRate>=0?T.accent:T.red, marginTop:"2px" }}>
             XIRR {xirrRate>=0?"+":""}{(xirrRate*100).toFixed(1)}% p.a.
-          </div>
-        )}
-
-        {/* Category override — for manually added MFs */}
-        {holding.type === "mf" && !holding.derived && onUpdateCategory && (
-          <div style={{ display:"flex", alignItems:"center", gap:"4px", marginTop:"6px", flexWrap:"wrap" }}>
-            {["Equity","Debt","Gold"].map(cat => {
-              const active = (holding.categoryOverride || "Equity") === cat;
-              return (
-                <button key={cat} onClick={() => onUpdateCategory(holding.id, active ? "" : cat)}
-                  style={{ padding:"2px 10px", borderRadius:"6px", border:"none", cursor:"pointer",
-                    fontSize:"10px", fontWeight:700,
-                    background: active ? T.amber : T.card,
-                    color:      active ? T.bg    : T.textMuted }}>
-                  {cat}
-                </button>
-              );
-            })}
           </div>
         )}
 
