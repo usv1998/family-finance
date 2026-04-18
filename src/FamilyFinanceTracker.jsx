@@ -12,6 +12,7 @@ import LoginScreen from "./components/LoginScreen";
 import IncomeTab from "./components/income/IncomeTab";
 import InvestmentsTab from "./components/investments/InvestmentsTab";
 import ExpensesTab from "./components/expenses/ExpensesTab";
+import DailyExpensesTab from "./components/expenses/DailyExpensesTab";
 import PortfolioTab from "./components/portfolio/PortfolioTab";
 
 export default function FamilyFinanceTracker() {
@@ -24,6 +25,7 @@ export default function FamilyFinanceTracker() {
   const [portfolioData,  setPortfolioData]  = useState({});
   const [rsuGrants,      setRsuGrants]      = useState([]);
   const [holdingsData,   setHoldingsData]   = useState([]);
+  const [txData,         setTxData]         = useState([]);
   const [liveData,       setLiveData]       = useState(LIVE_DEFAULTS);
   const [refreshing,     setRefreshing]     = useState(false);
   const [loading,        setLoading]        = useState(true);
@@ -87,6 +89,7 @@ export default function FamilyFinanceTracker() {
         if(saved.rsuGrants)       setRsuGrants(saved.rsuGrants);
         else                      setRsuGrants(SEED_DATA.rsuGrants);
         if(saved.holdingsData)    setHoldingsData(saved.holdingsData);
+        if(saved.txData)          setTxData(saved.txData);
       } else {
         setIncomeData(SEED_DATA.incomeData);
         setRsuData(SEED_DATA.rsuData);
@@ -94,17 +97,17 @@ export default function FamilyFinanceTracker() {
         setExpensesData(SEED_DATA.expensesData);
         setPortfolioData(SEED_DATA.portfolioData);
         setRsuGrants(SEED_DATA.rsuGrants);
-        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData, rsuGrants:SEED_DATA.rsuGrants, holdingsData:[] }, userRef.current?.id);
+        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData, rsuGrants:SEED_DATA.rsuGrants, holdingsData:[], txData:[] }, userRef.current?.id);
       }
       setLoading(false);
     })();
   },[authReady]);
 
-  const persist = useCallback((iD,rD,invD,expD,portD,rG,hD)=>{
+  const persist = useCallback((iD,rD,invD,expD,portD,rG,hD,tD)=>{
     if(saveRef.current) clearTimeout(saveRef.current);
     setSyncing(true);
     saveRef.current = setTimeout(async()=>{
-      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD}, userRef.current?.id);
+      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD, txData:tD}, userRef.current?.id);
       setSyncing(false);
     }, 500);
   },[]);
@@ -124,7 +127,7 @@ export default function FamilyFinanceTracker() {
       }
     }
     setIncomeData(next);
-    persist(next, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData);
+    persist(next, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData);
   };
 
   const addRsuEvent = (event) => {
@@ -132,62 +135,62 @@ export default function FamilyFinanceTracker() {
     if(!next[event.fy]) next[event.fy]=[];
     next[event.fy]=[...next[event.fy],event];
     setRsuData(next);
-    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData);
+    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData);
   };
 
   const deleteRsuEvent = (id) => {
     const next={...rsuData};
     Object.keys(next).forEach(k=>{next[k]=next[k].filter(e=>e.id!==id);});
     setRsuData(next);
-    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData);
+    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData);
   };
 
   const addRsuGrant = (grant) => {
     const next = [...rsuGrants, grant];
     setRsuGrants(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next, holdingsData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next, holdingsData, txData);
   };
 
   const deleteRsuGrant = (id) => {
     const next = rsuGrants.filter(g => g.id !== id);
     setRsuGrants(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next, holdingsData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next, holdingsData, txData);
   };
 
   const updateInvestments = (fyKey, data) => {
     const next={...investmentsData,[fyKey]:data};
     setInvestmentsData(next);
-    persist(incomeData, rsuData, next, expensesData, portfolioData, rsuGrants, holdingsData);
+    persist(incomeData, rsuData, next, expensesData, portfolioData, rsuGrants, holdingsData, txData);
   };
 
   const updateExpenses = (fyKey, data) => {
     const next={...expensesData,[fyKey]:data};
     setExpensesData(next);
-    persist(incomeData, rsuData, investmentsData, next, portfolioData, rsuGrants, holdingsData);
+    persist(incomeData, rsuData, investmentsData, next, portfolioData, rsuGrants, holdingsData, txData);
   };
 
   const updatePortfolio = (fyKey, data) => {
     const next={...portfolioData,[fyKey]:data};
     setPortfolioData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, next, rsuGrants, holdingsData);
+    persist(incomeData, rsuData, investmentsData, expensesData, next, rsuGrants, holdingsData, txData);
   };
 
   const addHolding = (h) => {
     const next = [...holdingsData, h];
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
   const deleteHolding = (id) => {
     const next = holdingsData.filter(h => h.id !== id);
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
   const updateHolding = (id, changes) => {
     const next = holdingsData.map(h => h.id === id ? { ...h, ...changes } : h);
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
   // Bulk upsert from CAS import: match by schemeCode + person → update; else add new.
@@ -204,7 +207,54 @@ export default function FamilyFinanceTracker() {
       }
     }
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+  };
+
+  // ── Daily transaction handlers ──────────────────────────────────────────
+  const addTx = (tx) => {
+    const next = [...txData, tx];
+    setTxData(next);
+    // Auto-roll: recompute expensesData actuals for the tx's FY month
+    rollTxIntoExpenses(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next);
+  };
+
+  const deleteTx = (id) => {
+    const next = txData.filter(t => t.id !== id);
+    setTxData(next);
+    rollTxIntoExpenses(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next);
+  };
+
+  // Recompute expensesData actuals from txList for all FY months.
+  // FY months: Apr=0..Mar=11. A date in YYYY-MM maps to FY month index.
+  const rollTxIntoExpenses = (txList) => {
+    // Build map: { fyKey: { monthIdx: { catId: total } } }
+    const fyMap = {};
+    for (const tx of txList) {
+      const [y, m] = tx.date.split("-").map(Number); // m = 1-12
+      // FY: Apr(m=4)..Mar(m=3 next year). FY starts in Apr.
+      const fyYear = m >= 4 ? y : y - 1;
+      const fyKey  = `FY${fyYear}-${String(fyYear + 1).slice(2)}`;
+      const mi     = m >= 4 ? m - 4 : m + 8; // Apr=0, Mar=11
+      if (!fyMap[fyKey])           fyMap[fyKey]           = {};
+      if (!fyMap[fyKey][mi])       fyMap[fyKey][mi]       = {};
+      const catId = tx.categoryId;
+      fyMap[fyKey][mi][catId] = (fyMap[fyKey][mi][catId] || 0) + Number(tx.amount);
+    }
+    setExpensesData(prev => {
+      const next = { ...prev };
+      for (const [fyKey, months] of Object.entries(fyMap)) {
+        const existing = next[fyKey] || {};
+        const actuals  = { ...(existing.actuals || {}) };
+        for (const [mi, cats] of Object.entries(months)) {
+          // Merge: keep non-tx actuals, overwrite tx-sourced categories
+          actuals[mi] = { ...(actuals[mi] || {}), ...cats };
+        }
+        next[fyKey] = { ...existing, actuals };
+      }
+      return next;
+    });
   };
 
   if(!authReady || (supabase && !user)) return supabase && !user && authReady ? <LoginScreen/> : <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
@@ -298,6 +348,14 @@ export default function FamilyFinanceTracker() {
         )}
         {activeTab==="expenses"&&(
           <ExpensesTab expensesData={expensesData} fy={fy} onUpdate={updateExpenses}/>
+        )}
+        {activeTab==="daily"&&(
+          <DailyExpensesTab
+            txData={txData}
+            expensesData={expensesData}
+            onAddTx={addTx}
+            onDeleteTx={deleteTx}
+          />
         )}
         {activeTab==="portfolio"&&(
           <PortfolioTab
