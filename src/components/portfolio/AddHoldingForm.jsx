@@ -120,7 +120,8 @@ export default function AddHoldingForm({ onAdd, onClose }) {
         break;
     }
     onAdd(h);
-    onClose();
+    // Keep all fields except quantity/units and date so the next lot can be added quickly
+    setForm(f => ({ ...f, quantity: "", units: "", acquisitionDate: "" }));
   };
 
   const selStyle = { ...inp, cursor:"pointer", appearance:"none",

@@ -479,7 +479,7 @@ export default function PortfolioTab({
 
       {showAddForm && view==="holdings" && (
         <AddHoldingForm
-          onAdd={h => { onAddHolding(h); setShowAddForm(false); }}
+          onAdd={h => { onAddHolding(h); }}
           onClose={() => setShowAddForm(false)}/>
       )}
 
