@@ -62,7 +62,7 @@ export default function AddHoldingForm({ onAdd, onClose }) {
     timerRef.current = setTimeout(async () => {
       setMfSearching(true);
       const res = await searchMF(q);
-      setMfResults(res.slice(0, 8));
+      setMfResults(res.slice(0, 20));
       setMfSearching(false);
     }, 400);
   };
@@ -261,6 +261,32 @@ export default function AddHoldingForm({ onAdd, onClose }) {
               <span style={{ color:T.purple, fontWeight:700 }}>Selected: </span>
               <span style={{ color:T.text }}>{mfSelected.schemeName}</span>
               <span style={{ color:T.textMuted, marginLeft:"8px" }}>Code: {mfSelected.schemeCode}</span>
+            </div>
+          )}
+          {!mfSelected && (
+            <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+              <input type="number" style={{ ...inp, width:"160px", flexShrink:0 }}
+                placeholder="AMFI code (e.g. 152100)"
+                onChange={async e => {
+                  const code = e.target.value.trim();
+                  if (code.length < 4) return;
+                  try {
+                    const res = await fetch(`https://api.mfapi.in/mf/${code}`);
+                    if (!res.ok) return;
+                    const json = await res.json();
+                    const name = json?.meta?.scheme_name;
+                    const house = json?.meta?.fund_house;
+                    if (name) {
+                      selectFund({ schemeCode: Number(code), schemeName: name, fundHouse: house || "" });
+                    }
+                  } catch {}
+                }}/>
+              <span style={{ fontSize:"11px", color:T.textMuted }}>
+                Can't find it? Enter AMFI code directly —{" "}
+                <a href="https://www.amfiindia.com/nav-history-download.aspx"
+                  target="_blank" rel="noreferrer"
+                  style={{ color:T.accent }}>look up on AMFI</a>
+              </span>
             </div>
           )}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px" }}>
