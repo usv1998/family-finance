@@ -234,6 +234,33 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
+  // Replace all MF lots for given ISINs/schemeCodes + person, add one holding per SIP lot.
+  const replaceMFLots = (person, funds) => {
+    const schemeCodes = new Set(funds.map(f => f.schemeCode).filter(Boolean));
+    const isins       = new Set(funds.map(f => f.isin).filter(Boolean));
+    let next = holdingsData.filter(h =>
+      !(h.type === "mf" && h.person === person &&
+        ((h.schemeCode && schemeCodes.has(h.schemeCode)) || (h.isin && isins.has(h.isin))))
+    );
+    for (const fund of funds) {
+      for (const lot of fund.lots) {
+        next = [...next, {
+          id:              genId(),
+          type:            "mf",
+          person,
+          name:            fund.name,
+          schemeCode:      fund.schemeCode || "",
+          isin:            fund.isin,
+          units:           lot.qty,
+          costBasisINR:    lot.costBasisINR,
+          acquisitionDate: lot.date,
+        }];
+      }
+    }
+    setHoldingsData(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+  };
+
   // Bulk upsert: match by schemeCode (mf) + person → update; else add new.
   const upsertHoldings = (person, items) => {
     let next = [...holdingsData];
@@ -421,6 +448,7 @@ export default function FamilyFinanceTracker() {
             onUpdateHoldingsBatch={updateHoldingsBatch}
             onUpsertHoldings={upsertHoldings}
             onReplaceStockLots={replaceStockLots}
+            onReplaceMFLots={replaceMFLots}
             onAddRsuEvent={addRsuEvent}
             onDeleteRsuEvent={deleteRsuEvent}
             onAddRsuGrant={addRsuGrant}

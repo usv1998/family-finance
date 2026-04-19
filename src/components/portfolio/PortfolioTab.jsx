@@ -458,7 +458,8 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
 
 export default function PortfolioTab({
   holdingsData, rsuData, incomeData, investmentsData, rsuGrants, liveData, fy,
-  onAddHolding, onDeleteHolding, onUpdateHolding, onUpdateHoldingsBatch, onUpsertHoldings, onReplaceStockLots,
+  onAddHolding, onDeleteHolding, onUpdateHolding, onUpdateHoldingsBatch, onUpsertHoldings,
+  onReplaceStockLots, onReplaceMFLots,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
   const [view,          setView]          = useState("overview");
@@ -562,11 +563,6 @@ export default function PortfolioTab({
                   borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
                 ⬆ Tradebook
               </button>
-              <button onClick={() => setShowCasImport(true)}
-                style={{ padding:"6px 14px", background:T.card, border:`1px solid ${T.border}`,
-                  borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
-                ⬆ Import CAS
-              </button>
               <button onClick={() => setShowAddForm(v => !v)}
                 style={{ padding:"6px 14px", background:T.accent, border:"none",
                   borderRadius:"8px", color:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
@@ -587,6 +583,7 @@ export default function PortfolioTab({
         <TradebookImportModal
           holdingsData={holdingsData}
           onReplaceStockLots={onReplaceStockLots}
+          onReplaceMFLots={onReplaceMFLots}
           onClose={() => setShowTradebookImport(false)}/>
       )}
 
