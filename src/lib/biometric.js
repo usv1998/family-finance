@@ -12,7 +12,13 @@ function b64ToBuf(b64) {
   return Uint8Array.from(bin, c => c.charCodeAt(0)).buffer;
 }
 
+export function isMobile() {
+  if (navigator.userAgentData?.mobile != null) return navigator.userAgentData.mobile;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 export function isBiometricSupported() {
+  if (!isMobile()) return false; // desktop: skip lock entirely
   return !!(window.PublicKeyCredential && navigator.credentials);
 }
 
