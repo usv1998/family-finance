@@ -93,19 +93,36 @@ function parseTradebook(text) {
   return { stocks, mfs: mfList };
 }
 
-// Resolve ISIN → AMFI scheme code via mfapi search
-async function resolveSchemeCode(isin, name) {
-  try {
-    // Search by first few words of fund name for speed
-    const q = name.split(/[-–]/)[0].trim().split(" ").slice(0,3).join(" ");
-    const res = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(q)}`);
-    if (!res.ok) return null;
-    const results = await res.json();
-    // Match by ISIN if available in result, else take first result
-    const match = results.find(r => r.isinGrowth === isin || r.isinDivReinvestment === isin)
-      || results[0];
-    return match?.schemeCode ? String(match.schemeCode) : null;
-  } catch { return null; }
+// Fetch AMFI NAV master file and build ISIN → schemeCode map.
+// Format: SchemeCode;ISINGrowth;ISINDivReinvest;SchemeName;NAV;Date
+let _amfiMapPromise = null;
+async function getAmfiMap() {
+  if (_amfiMapPromise) return _amfiMapPromise;
+  _amfiMapPromise = (async () => {
+    try {
+      const res = await fetch("https://portal.amfiindia.com/spages/NAVAll.txt", { cache: "force-cache" });
+      if (!res.ok) return {};
+      const text = await res.text();
+      const map = {};
+      for (const line of text.split("\n")) {
+        const parts = line.split(";");
+        if (parts.length < 4) continue;
+        const code  = parts[0].trim();
+        const isin1 = parts[1].trim();
+        const isin2 = parts[2].trim();
+        if (!code || isNaN(Number(code))) continue;
+        if (isin1 && isin1 !== "-") map[isin1] = code;
+        if (isin2 && isin2 !== "-") map[isin2] = code;
+      }
+      return map;
+    } catch { return {}; }
+  })();
+  return _amfiMapPromise;
+}
+
+async function resolveSchemeCode(isin) {
+  const map = await getAmfiMap();
+  return map[isin] || null;
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -147,7 +164,7 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
         if (m.length > 0) {
           setResolving(true);
           const resolved = await Promise.all(
-            m.map(async f => ({ ...f, schemeCode: await resolveSchemeCode(f.isin, f.name) }))
+            m.map(async f => ({ ...f, schemeCode: await resolveSchemeCode(f.isin) }))
           );
           setMFs(resolved);
           setResolving(false);
