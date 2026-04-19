@@ -9,8 +9,6 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   const inv     = expensesData?.[fy] || {};
   const actuals = inv.actuals || {};
 
-  // Always use DEFAULT_CATEGORIES as the master list, merging in any saved budgets by ID.
-  // This means new categories added in Daily Expenses automatically appear here.
   const savedBudgetById = Object.fromEntries(
     (inv.categories || []).map(c => [c.id, c.budget || 0])
   );
@@ -19,244 +17,319 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
     budget: savedBudgetById[c.id] ?? 0,
   }));
 
-  const [selMonth, setSelMonth] = useState(getCurrentMonthIdx);
-  const [editVals, setEditVals] = useState({});
-  const [editingMonth, setEditingMonth] = useState(null);
-  const [editBudgets, setEditBudgets] = useState(false);
-  const [budgetDraft, setBudgetDraft] = useState({});
+  const [selMonth,     setSelMonth]     = useState(getCurrentMonthIdx);
+  const [editSheet,    setEditSheet]    = useState(false);
+  const [editVals,     setEditVals]     = useState({});
+  const [editBudgets,  setEditBudgets]  = useState(false);
+  const [budgetDraft,  setBudgetDraft]  = useState({});
 
-  const getActual = (mi, catId) => Number(actuals?.[mi]?.[catId]) || 0;
+  const getActual  = (mi, catId) => Number(actuals?.[mi]?.[catId]) || 0;
   const monthTotal = (mi) => Object.values(actuals?.[mi] || {}).reduce((s,v)=>s+Number(v),0);
-  const monthBudget = () => categories.reduce((s,c)=>s+Number(c.budget||0),0);
+  const monthBudget= () => categories.reduce((s,c)=>s+Number(c.budget||0),0);
 
-  // YTD: only count months that have any actual entered
-  const enteredMonths = MONTHS.map((_,mi)=>monthTotal(mi)>0);
-  const ytdActual   = MONTHS.reduce((s,_,mi)=>s+monthTotal(mi),0);
-  const ytdBudget   = enteredMonths.filter(Boolean).length * monthBudget();
-  const ytdSurplus  = ytdBudget - ytdActual;
-  const annualBudget= monthBudget() * 12;
+  const enteredMonths  = MONTHS.map((_,mi) => monthTotal(mi) > 0);
+  const ytdActual      = MONTHS.reduce((s,_,mi) => s + monthTotal(mi), 0);
+  const ytdBudget      = enteredMonths.filter(Boolean).length * monthBudget();
+  const ytdSurplus     = ytdBudget - ytdActual;
+  const annualBudget   = monthBudget() * 12;
 
   const updateInv = (patch) => onUpdate(fy, { ...inv, categories, actuals, ...patch });
 
   const exportExpenses = () => {
     const headers = ["Category", "Budget/Month", ...MONTHS, "FY Total Actual", "FY Budget", "Variance"];
     const rows = categories.map(c => {
-      const monthly   = MONTHS.map((_,mi) => getActual(mi, c.id));
-      const fyTotal   = monthly.reduce((s,v)=>s+v,0);
-      const fyBudget  = Number(c.budget||0) * 12;
+      const monthly = MONTHS.map((_,mi) => getActual(mi, c.id));
+      const fyTotal = monthly.reduce((s,v)=>s+v,0);
+      const fyBudget = Number(c.budget||0) * 12;
       return [c.name, c.budget, ...monthly, fyTotal, fyBudget, fyBudget - fyTotal];
     });
     const totals = ["TOTAL", monthBudget(), ...MONTHS.map((_,mi)=>monthTotal(mi)), ytdActual, annualBudget, annualBudget-ytdActual];
     downloadCSV(`expenses_${fy}.csv`, [headers, ...rows, totals]);
   };
 
-  // start editing a month
-  const startEdit = (mi) => {
+  const openEdit = () => {
     const draft = {};
-    categories.forEach(c=>{ draft[c.id] = getActual(mi,c.id)||""; });
+    categories.forEach(c => { draft[c.id] = getActual(selMonth, c.id) || ""; });
     setEditVals(draft);
-    setEditingMonth(mi);
+    setEditSheet(true);
   };
 
   const saveEdit = () => {
-    const newActuals = { ...actuals, [editingMonth]: {} };
-    categories.forEach(c=>{ const v=Number(editVals[c.id])||0; if(v>0) newActuals[editingMonth][c.id]=v; });
+    const newActuals = { ...actuals, [selMonth]: {} };
+    categories.forEach(c => { const v = Number(editVals[c.id])||0; if (v>0) newActuals[selMonth][c.id] = v; });
     updateInv({ actuals: newActuals });
-    setEditingMonth(null);
+    setEditSheet(false);
   };
 
   const saveBudgets = () => {
-    const updated = categories.map(c=>({ ...c, budget: Number(budgetDraft[c.id]??c.budget)||0 }));
+    const updated = categories.map(c => ({ ...c, budget: Number(budgetDraft[c.id]??c.budget)||0 }));
     updateInv({ categories: updated });
     setEditBudgets(false);
   };
 
-  const inp = { padding:"8px 12px", background:T.card, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"13px", outline:"none", width:"100%", fontFamily:"'JetBrains Mono',monospace" };
+  const inp = {
+    padding:"12px 14px", background:T.card, border:`1px solid ${T.border}`,
+    borderRadius:"10px", color:T.text, fontSize:"15px", outline:"none",
+    width:"100%", boxSizing:"border-box", fontFamily:"'JetBrains Mono',monospace",
+  };
 
-  const SumCard = ({label,value,sub,color,neg}) => (
-    <div style={{ background:T.surface, borderRadius:"10px", padding:"14px 16px", border:`1px solid ${T.border}` }}>
-      <div style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", marginBottom:"6px" }}>{label.toUpperCase()}</div>
-      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"18px", fontWeight:800, color:neg?(value<0?T.red:T.accent):color }}>{fmtINR(value)}</div>
-      {sub&&<div style={{ fontSize:"11px", color:T.textMuted, marginTop:"4px" }}>{sub}</div>}
-    </div>
-  );
+  const total = monthTotal(selMonth);
+  const budget = monthBudget();
 
   return (
-    <div>
-      {/* Summary cards */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:"12px", marginBottom:"24px" }}>
-        <SumCard label="Annual Budget"  value={annualBudget} color={T.textDim} sub={`${categories.length} categories`}/>
-        <SumCard label="YTD Spent"      value={ytdActual}    color={T.amber}   sub={`${enteredMonths.filter(Boolean).length} months recorded`}/>
-        <SumCard label="YTD Surplus"    value={ytdSurplus}   color={T.accent}  sub="vs budget months entered" neg/>
+    <div style={{ paddingBottom:"80px" }}>
+
+      {/* ── Summary strip ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"10px", marginBottom:"16px" }}>
+        {[
+          { label:"Annual Budget", value:fmtINR(annualBudget),  color:T.textDim },
+          { label:"YTD Spent",     value:fmtINR(ytdActual),     color:T.amber },
+          { label:"YTD Surplus",   value:fmtINR(ytdSurplus),    color:ytdSurplus>=0?T.accent:T.red },
+        ].map(c => (
+          <div key={c.label} style={{ background:T.surface, borderRadius:"12px",
+            border:`1px solid ${T.border}`, padding:"12px" }}>
+            <div style={{ fontSize:"9px", color:T.textMuted, fontWeight:700,
+              letterSpacing:"0.5px", marginBottom:"6px", textTransform:"uppercase" }}>{c.label}</div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"13px",
+              fontWeight:800, color:c.color, lineHeight:1 }}>{c.value}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Month selector */}
-      <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px", overflowX:"auto", marginBottom:"20px" }}>
-        {MONTHS.map((m,mi)=>{
-          const hasData = monthTotal(mi) > 0;
-          return (
-            <button key={m} onClick={()=>setSelMonth(mi)} style={{
-              ...{ padding:"6px 12px", borderRadius:"7px", border:"none", fontSize:"12px", fontWeight:600, cursor:"pointer", whiteSpace:"nowrap", transition:"all 0.15s", position:"relative" },
-              background: selMonth===mi ? T.accent : "transparent",
-              color: selMonth===mi ? T.bg : hasData ? T.text : T.textMuted,
-            }}>
-              {m}{hasData&&<span style={{ position:"absolute",top:2,right:2,width:4,height:4,borderRadius:"50%",background:selMonth===mi?T.bg:T.accent }}/>}
-            </button>
-          );
-        })}
+      {/* ── Month selector ── */}
+      <div style={{ marginBottom:"16px" }}>
+        <select value={selMonth} onChange={e => setSelMonth(Number(e.target.value))}
+          style={{ width:"100%", padding:"10px 14px", borderRadius:"10px",
+            background:T.card, border:`1px solid ${T.border}`,
+            color:T.text, fontSize:"14px", fontWeight:700,
+            outline:"none", cursor:"pointer", appearance:"none",
+            fontFamily:"'DM Sans',-apple-system,sans-serif" }}>
+          {MONTHS.map((m,mi) => (
+            <option key={m} value={mi}>
+              {MONTH_FULL[mi]}{monthTotal(mi)>0 ? ` · ${fmtINR(monthTotal(mi))}` : ""}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Monthly breakdown */}
-      <div style={{ background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`, marginBottom:"24px", overflow:"hidden" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 20px", borderBottom:`1px solid ${T.border}` }}>
+      {/* ── Month hero card ── */}
+      <div style={{ background:`linear-gradient(135deg,${T.surface},${T.card})`,
+        borderRadius:"16px", border:`1px solid ${T.border}`,
+        padding:"18px", marginBottom:"16px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"14px" }}>
           <div>
-            <span style={{ fontSize:"14px", fontWeight:700, color:T.text }}>{MONTH_FULL[selMonth]} Expenses</span>
-            <span style={{ fontSize:"12px", color:T.textMuted, marginLeft:"10px" }}>
-              {monthTotal(selMonth)>0 ? `Spent ${fmtINR(monthTotal(selMonth))} of ${fmtINR(monthBudget())} budget` : "No actuals entered"}
-            </span>
+            <div style={{ fontSize:"11px", color:T.textMuted, fontWeight:700,
+              letterSpacing:"0.5px", marginBottom:"4px" }}>
+              {MONTH_FULL[selMonth].toUpperCase()} SPEND
+            </div>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"28px",
+              fontWeight:800, color:T.text, lineHeight:1 }}>
+              {total > 0 ? fmtINR(total) : "—"}
+            </div>
+            {budget > 0 && (
+              <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"4px" }}>
+                of {fmtINR(budget)} budget
+              </div>
+            )}
           </div>
-          <button onClick={()=>editingMonth===selMonth ? saveEdit() : startEdit(selMonth)} style={{ padding:"7px 16px", background:editingMonth===selMonth?T.accent:T.card, border:`1px solid ${editingMonth===selMonth?T.accent:T.border}`, borderRadius:"8px", color:editingMonth===selMonth?T.bg:T.text, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
-            {editingMonth===selMonth ? "Save" : "Edit Month"}
+          <button onClick={openEdit}
+            style={{ padding:"10px 18px", background:T.accent, border:"none",
+              borderRadius:"10px", color:T.bg, fontSize:"13px", fontWeight:700,
+              cursor:"pointer", whiteSpace:"nowrap" }}>
+            Edit Month
           </button>
         </div>
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"13px" }}>
-            <thead>
-              <tr style={{ background:T.card }}>
-                <th style={{ padding:"10px 16px", textAlign:"left", color:T.textMuted, fontSize:"11px", fontWeight:700, letterSpacing:"0.5px" }}>CATEGORY</th>
-                <th style={{ padding:"10px 12px", textAlign:"right", color:T.textMuted, fontSize:"11px", fontWeight:700 }}>BUDGET</th>
-                <th style={{ padding:"10px 12px", textAlign:"right", color:T.textMuted, fontSize:"11px", fontWeight:700 }}>ACTUAL</th>
-                <th style={{ padding:"10px 12px", textAlign:"right", color:T.textMuted, fontSize:"11px", fontWeight:700 }}>DIFF</th>
-                <th style={{ padding:"10px 12px", textAlign:"right", color:T.textMuted, fontSize:"11px", fontWeight:700 }}>% USED</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map((cat,i)=>{
-                const budget = Number(cat.budget)||0;
-                const actual = editingMonth===selMonth ? (Number(editVals[cat.id])||0) : getActual(selMonth,cat.id);
-                const diff   = budget - actual;
-                const pct    = budget>0 ? Math.round(actual/budget*100) : 0;
-                const statusColor = actual===0 ? T.textMuted : pct<=100 ? T.accent : pct<=120 ? T.amber : T.red;
-                return (
-                  <tr key={cat.id} style={{ borderTop:`1px solid ${T.border}`, background:i%2===0?"transparent":T.card+"44" }}>
-                    <td style={{ padding:"10px 16px" }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
-                        <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:cat.color, flexShrink:0 }}/>
-                        <span style={{ color:T.text, fontWeight:500 }}>{cat.name}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding:"10px 12px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.textDim }}>{fmtINR(budget)}</td>
-                    <td style={{ padding:"10px 12px", textAlign:"right" }}>
-                      {editingMonth===selMonth ? (
-                        <input type="number" value={editVals[cat.id]||""} placeholder="0"
-                          onChange={e=>setEditVals(v=>({...v,[cat.id]:e.target.value}))}
-                          style={{ ...inp, width:"110px", padding:"5px 8px", textAlign:"right" }}/>
-                      ) : (
-                        <span style={{ fontFamily:"'JetBrains Mono',monospace", color:actual>0?statusColor:T.textMuted }}>{actual>0?fmtINR(actual):"—"}</span>
-                      )}
-                    </td>
-                    <td style={{ padding:"10px 12px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:actual===0?T.textMuted:diff>=0?T.accent:T.red, fontWeight:600 }}>
-                      {actual===0?"—":diff>=0?`+${fmtINR(diff)}`:fmtINR(diff)}
-                    </td>
-                    <td style={{ padding:"10px 12px", textAlign:"right" }}>
-                      {actual>0 && (
-                        <div style={{ display:"flex", alignItems:"center", gap:"6px", justifyContent:"flex-end" }}>
-                          <div style={{ width:"50px", height:"5px", background:T.border, borderRadius:"3px", overflow:"hidden" }}>
-                            <div style={{ height:"100%", width:`${Math.min(100,pct)}%`, background:statusColor, borderRadius:"3px" }}/>
-                          </div>
-                          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"11px", color:statusColor, fontWeight:700, minWidth:"32px", textAlign:"right" }}>{pct}%</span>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {/* Total row */}
-              <tr style={{ borderTop:`2px solid ${T.border}`, background:T.card }}>
-                <td style={{ padding:"10px 16px", color:T.accent, fontWeight:700 }}>Total</td>
-                <td style={{ padding:"10px 12px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.textDim, fontWeight:700 }}>{fmtINR(monthBudget())}</td>
-                <td style={{ padding:"10px 12px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:700 }}>
-                  {editingMonth===selMonth ? fmtINR(categories.reduce((s,c)=>s+(Number(editVals[c.id])||0),0)) : fmtINR(monthTotal(selMonth))}
-                </td>
-                <td style={{ padding:"10px 12px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:monthTotal(selMonth)===0?T.textMuted:monthBudget()-monthTotal(selMonth)>=0?T.accent:T.red }}>
-                  {monthTotal(selMonth)===0?"—":fmtINR(monthBudget()-monthTotal(selMonth))}
-                </td>
-                <td/>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Annual overview */}
-      <div style={{ background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`, marginBottom:"24px", overflow:"hidden" }}>
-        <div style={{ padding:"14px 20px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <span style={{ fontSize:"14px", fontWeight:700, color:T.text }}>Annual Overview</span>
-          <div style={{ display:"flex", gap:"8px" }}>
-          <button onClick={exportExpenses} style={{ padding:"6px 13px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>Export CSV ↓</button>
-          <button onClick={()=>{ setEditBudgets(!editBudgets); setBudgetDraft(Object.fromEntries(categories.map(c=>[c.id,c.budget]))); }}
-            style={{ padding:"6px 14px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
-            {editBudgets?"Cancel":"Edit Budgets"}
-          </button>
-          </div>
-        </div>
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"12px" }}>
-            <thead>
-              <tr style={{ background:T.card }}>
-                <th style={{ padding:"8px 16px", textAlign:"left", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", position:"sticky", left:0, background:T.card, zIndex:1 }}>CATEGORY</th>
-                <th style={{ padding:"8px 10px", textAlign:"right", color:T.textMuted, fontWeight:700 }}>BUDGET/MO</th>
-                {MONTHS.map(m=><th key={m} style={{ padding:"8px 10px", textAlign:"right", color:T.textMuted, fontWeight:700 }}>{m.toUpperCase()}</th>)}
-                <th style={{ padding:"8px 12px", textAlign:"right", color:T.accent, fontWeight:700 }}>FY TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map((cat,i)=>{
-                const fyTotal = MONTHS.reduce((s,_,mi)=>s+getActual(mi,cat.id),0);
-                return (
-                  <tr key={cat.id} style={{ borderTop:`1px solid ${T.border}`, background:i%2===0?"transparent":T.card+"44" }}>
-                    <td style={{ padding:"8px 16px", position:"sticky", left:0, background:i%2===0?T.surface:T.card+"44", zIndex:1 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
-                        <div style={{ width:"7px", height:"7px", borderRadius:"50%", background:cat.color, flexShrink:0 }}/>
-                        <span style={{ color:T.text, fontWeight:500 }}>{cat.name}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding:"8px 10px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.textDim }}>
-                      {editBudgets ? (
-                        <input type="number" value={budgetDraft[cat.id]??cat.budget} onChange={e=>setBudgetDraft(d=>({...d,[cat.id]:e.target.value}))}
-                          style={{ ...inp, width:"90px", padding:"3px 6px", textAlign:"right", fontSize:"11px" }}/>
-                      ) : fmtINR(cat.budget)}
-                    </td>
-                    {MONTHS.map((_,mi)=>{
-                      const v = getActual(mi,cat.id);
-                      const pct = cat.budget>0 ? v/cat.budget*100 : 0;
-                      const c = v===0 ? T.textMuted : pct<=100 ? T.accent : pct<=120 ? T.amber : T.red;
-                      return <td key={mi} style={{ padding:"8px 10px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:c }}>{v>0?fmtINR(v):"—"}</td>;
-                    })}
-                    <td style={{ padding:"8px 12px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:fyTotal>0?T.text:T.textMuted, fontWeight:700 }}>{fyTotal>0?fmtINR(fyTotal):"—"}</td>
-                  </tr>
-                );
-              })}
-              {/* Total row */}
-              <tr style={{ borderTop:`2px solid ${T.border}`, background:T.card }}>
-                <td style={{ padding:"8px 16px", color:T.accent, fontWeight:700, position:"sticky", left:0, background:T.card, zIndex:1 }}>Total</td>
-                <td style={{ padding:"8px 10px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.textDim, fontWeight:700 }}>{fmtINR(monthBudget())}</td>
-                {MONTHS.map((_,mi)=>{
-                  const v=monthTotal(mi);
-                  return <td key={mi} style={{ padding:"8px 10px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:v>0?T.accent:T.textMuted, fontWeight:700 }}>{v>0?fmtINR(v):"—"}</td>;
-                })}
-                <td style={{ padding:"8px 12px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:800 }}>{fmtINR(ytdActual)||"—"}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        {editBudgets && (
-          <div style={{ padding:"12px 20px", borderTop:`1px solid ${T.border}`, display:"flex", gap:"8px", justifyContent:"flex-end" }}>
-            <button onClick={saveBudgets} style={{ padding:"8px 20px", background:T.accent, border:"none", borderRadius:"8px", color:T.bg, fontSize:"13px", fontWeight:700, cursor:"pointer" }}>Save Budgets</button>
+        {/* Budget progress bar */}
+        {budget > 0 && (
+          <div style={{ height:"5px", background:T.card, borderRadius:"3px", overflow:"hidden" }}>
+            <div style={{ height:"100%", borderRadius:"3px", transition:"width 0.4s",
+              width:`${Math.min(100, total/budget*100)}%`,
+              background: total/budget <= 1 ? T.accent : T.red }}/>
           </div>
         )}
       </div>
 
+      {/* ── Category breakdown cards ── */}
+      {total > 0 && (
+        <div style={{ display:"flex", flexDirection:"column", gap:"8px", marginBottom:"16px" }}>
+          {categories
+            .map(cat => ({ ...cat, actual: getActual(selMonth, cat.id) }))
+            .filter(c => c.actual > 0 || c.budget > 0)
+            .sort((a,b) => b.actual - a.actual)
+            .map(cat => {
+              const pct = cat.budget > 0 ? Math.round(cat.actual / cat.budget * 100) : null;
+              const statusColor = cat.actual === 0 ? T.textMuted
+                : pct === null ? T.accent
+                : pct <= 100 ? T.accent : pct <= 120 ? T.amber : T.red;
+              return (
+                <div key={cat.id} style={{ background:T.surface, borderRadius:"12px",
+                  border:`1px solid ${T.border}`, padding:"14px" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                    <div style={{ width:"10px", height:"10px", borderRadius:"50%",
+                      background:cat.color, flexShrink:0 }}/>
+                    <span style={{ fontSize:"14px", fontWeight:600, color:T.text, flex:1 }}>
+                      {cat.name}
+                    </span>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"14px",
+                        fontWeight:800, color:cat.actual>0?statusColor:T.textMuted }}>
+                        {cat.actual > 0 ? fmtINR(cat.actual) : "—"}
+                      </div>
+                      {cat.budget > 0 && (
+                        <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"1px" }}>
+                          {fmtINR(cat.budget)} budget{pct!==null?` · ${pct}%`:""}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {cat.budget > 0 && cat.actual > 0 && (
+                    <div style={{ height:"3px", background:T.card, borderRadius:"2px",
+                      overflow:"hidden", marginTop:"10px" }}>
+                      <div style={{ height:"100%", borderRadius:"2px", transition:"width 0.4s",
+                        width:`${Math.min(100,pct)}%`, background:statusColor }}/>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          }
+        </div>
+      )}
+
+      {/* ── Action row ── */}
+      <div style={{ display:"flex", gap:"10px", marginBottom:"16px" }}>
+        <button onClick={()=>{ setEditBudgets(!editBudgets); setBudgetDraft(Object.fromEntries(categories.map(c=>[c.id,c.budget]))); }}
+          style={{ flex:1, padding:"12px", background:T.card, border:`1px solid ${T.border}`,
+            borderRadius:"10px", color:T.textDim, fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
+          {editBudgets ? "Cancel Budgets" : "Edit Budgets"}
+        </button>
+        <button onClick={exportExpenses}
+          style={{ flex:1, padding:"12px", background:T.card, border:`1px solid ${T.border}`,
+            borderRadius:"10px", color:T.textDim, fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
+          Export CSV ↓
+        </button>
+      </div>
+
+      {/* ── Budget editor ── */}
+      {editBudgets && (
+        <div style={{ background:T.surface, borderRadius:"14px", border:`1px solid ${T.border}`,
+          padding:"16px", marginBottom:"16px" }}>
+          <div style={{ fontSize:"12px", fontWeight:700, color:T.textMuted,
+            letterSpacing:"0.5px", marginBottom:"14px" }}>MONTHLY BUDGETS</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
+            {categories.map(cat => (
+              <div key={cat.id} style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+                <div style={{ width:"8px", height:"8px", borderRadius:"50%",
+                  background:cat.color, flexShrink:0 }}/>
+                <span style={{ fontSize:"13px", fontWeight:600, color:T.text, flex:1 }}>
+                  {cat.name}
+                </span>
+                <input type="number" value={budgetDraft[cat.id]??cat.budget}
+                  onChange={e => setBudgetDraft(d=>({...d,[cat.id]:e.target.value}))}
+                  placeholder="0" style={{ ...inp, width:"120px", fontSize:"14px", padding:"8px 10px" }}/>
+              </div>
+            ))}
+          </div>
+          <button onClick={saveBudgets}
+            style={{ marginTop:"16px", width:"100%", padding:"14px", background:T.accent,
+              border:"none", borderRadius:"10px", color:T.bg,
+              fontSize:"15px", fontWeight:800, cursor:"pointer" }}>
+            Save Budgets
+          </button>
+        </div>
+      )}
+
+      {/* ── Annual overview ── */}
+      <div style={{ background:T.surface, borderRadius:"14px", border:`1px solid ${T.border}`,
+        padding:"16px" }}>
+        <div style={{ fontSize:"12px", fontWeight:700, color:T.textMuted,
+          letterSpacing:"0.5px", marginBottom:"14px" }}>FY ANNUAL OVERVIEW</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+          {categories.map(cat => {
+            const fyTotal = MONTHS.reduce((s,_,mi) => s + getActual(mi,cat.id), 0);
+            const fyBudget = (cat.budget||0) * 12;
+            const months = MONTHS.filter((_,mi) => getActual(mi,cat.id)>0).length;
+            if (fyTotal === 0 && fyBudget === 0) return null;
+            const pct = fyBudget > 0 ? Math.round(fyTotal/fyBudget*100) : null;
+            const gc = !pct ? T.accent : pct<=100?T.accent:pct<=120?T.amber:T.red;
+            return (
+              <div key={cat.id} style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                <div style={{ width:"8px", height:"8px", borderRadius:"50%",
+                  background:cat.color, flexShrink:0 }}/>
+                <span style={{ fontSize:"13px", fontWeight:500, color:T.text, flex:1, minWidth:0,
+                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                  {cat.name}
+                </span>
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px",
+                    fontWeight:700, color:fyTotal>0?gc:T.textMuted }}>
+                    {fyTotal>0?fmtINR(fyTotal):"—"}
+                    {pct!==null && fyTotal>0 && (
+                      <span style={{ color:T.textMuted, fontWeight:400, fontSize:"10px" }}> {pct}%</span>
+                    )}
+                  </div>
+                  {months>0 && (
+                    <div style={{ fontSize:"10px", color:T.textMuted }}>{months} month{months!==1?"s":""}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:"10px", marginTop:"4px",
+            display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <span style={{ fontSize:"13px", fontWeight:700, color:T.accent }}>Total</span>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"14px",
+              fontWeight:800, color:T.accent }}>{fmtINR(ytdActual)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Edit month bottom sheet ── */}
+      {editSheet && (
+        <>
+          <div onClick={() => setEditSheet(false)}
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)",
+              zIndex:100, backdropFilter:"blur(2px)" }}/>
+          <div style={{ position:"fixed", bottom:0, left:0, right:0, zIndex:101,
+            background:T.surface, borderRadius:"20px 20px 0 0",
+            border:`1px solid ${T.border}`, borderBottom:"none",
+            padding:"0 20px 32px", maxHeight:"90dvh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"center", padding:"12px 0 16px" }}>
+              <div style={{ width:"36px", height:"4px", borderRadius:"2px", background:T.border }}/>
+            </div>
+            <div style={{ fontSize:"16px", fontWeight:800, color:T.text, marginBottom:"20px" }}>
+              {MONTH_FULL[selMonth]} Actuals
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
+              {categories.map(cat => (
+                <div key={cat.id}>
+                  <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700,
+                    letterSpacing:"0.5px", display:"flex", alignItems:"center",
+                    gap:"6px", marginBottom:"6px" }}>
+                    <span style={{ width:"8px", height:"8px", borderRadius:"50%",
+                      background:cat.color, display:"inline-block" }}/>
+                    {cat.name.toUpperCase()}
+                    {cat.budget>0 && (
+                      <span style={{ color:T.textMuted, fontWeight:400, fontSize:"10px" }}>
+                        · budget {fmtINR(cat.budget)}
+                      </span>
+                    )}
+                  </label>
+                  <input type="number" value={editVals[cat.id]||""} placeholder="0"
+                    onChange={e => setEditVals(v=>({...v,[cat.id]:e.target.value}))}
+                    style={{ ...inp, fontSize:"20px", fontWeight:700 }}/>
+                </div>
+              ))}
+            </div>
+            <button onClick={saveEdit}
+              style={{ marginTop:"20px", width:"100%", padding:"16px", background:T.accent,
+                border:"none", borderRadius:"12px", color:T.bg,
+                fontSize:"16px", fontWeight:800, cursor:"pointer" }}>
+              Save {MONTH_FULL[selMonth]} Actuals
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

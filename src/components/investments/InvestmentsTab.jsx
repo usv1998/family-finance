@@ -93,7 +93,7 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
   return (
     <div>
       {/* ── Top summary ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:"12px", marginBottom:"24px" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:"10px", marginBottom:"20px" }}>
         <SumCard label="EPF Corpus (FY)"  value={fmtINR(epfGrand)}  sub={`Opening ${fmtINR(epfOpening.Selva+epfOpening.Akshaya)}`} color={T.blue}   />
         <SumCard label="US Stocks (FY)"   value={fmtINR(usStocksGrand)} sub="RSU + ESPP net value at vest" color={T.amber}  />
         <SumCard label="Total Investments" value={fmtINR(epfGrand+usStocksGrand)} color={T.white} />
@@ -106,7 +106,7 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
           <span style={{ fontSize:"11px", color:T.textMuted }}>Employee + Employer · 8.25% p.a.</span>
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", marginBottom:"16px", padding:"14px", background:T.bg, borderRadius:"10px" }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:"12px", marginBottom:"16px", padding:"14px", background:T.bg, borderRadius:"10px" }}>
           <div style={{ fontSize:"11px", color:T.textDim, fontWeight:600, gridColumn:"1/-1", marginBottom:"4px" }}>OPENING BALANCE (Start of FY)</div>
           {PERSONS.map(p=>(
             <div key={p} style={{ display:"flex", alignItems:"center", gap:"10px" }}>
@@ -165,7 +165,7 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
           <span>US Stocks — RSU &amp; ESPP</span>
           <span style={{ fontSize:"11px", color:T.textMuted }}>Net shares · value at vest date</span>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px" }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
           {usStocksByPerson.map(e=>(
             <div key={e.person} style={{ padding:"14px", background:T.bg, borderRadius:"10px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>

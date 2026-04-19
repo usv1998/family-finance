@@ -218,7 +218,7 @@ function OverviewView({ enriched, totalNW }) {
     <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
 
       {/* ── 1. KPI hero strip ──────────────────────────────────────────────── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:"12px" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:"10px" }}>
         <MetricCard title="Net Worth" value={fmtL(totalNW)}
           sub={`${enriched.length} holding${enriched.length!==1?"s":""}`}/>
         {portfolioRate !== null && (
@@ -240,7 +240,7 @@ function OverviewView({ enriched, totalNW }) {
       </div>
 
       {/* ── 2. Asset allocation donut + type breakdown bar ─────────────────── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(270px,1fr))", gap:"16px" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:"16px" }}>
 
         {/* Donut: Equity / Debt / Gold */}
         <SectionCard title="Asset Allocation">
@@ -335,7 +335,7 @@ function OverviewView({ enriched, totalNW }) {
       </div>
 
       {/* ── 3. Person split + category performance ────────────────────────── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(270px,1fr))", gap:"16px" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:"16px" }}>
 
         {/* Person donut */}
         {personDonut.length >= 1 && (
@@ -793,39 +793,40 @@ export default function PortfolioTab({
 
   return (
     <div>
-      {/* Sub-nav */}
-      <div style={{ display:"flex", alignItems:"center", gap:"4px", marginBottom:"20px",
-        borderBottom:`1px solid ${T.border}`, paddingBottom:"12px", flexWrap:"wrap", rowGap:"8px" }}>
-        <NavBtn id="overview" label="Overview"/>
-        <NavBtn id="holdings" label="Holdings"/>
-        <NavBtn id="grants"   label="Grants"/>
-        <div style={{ flex:1 }}/>
-        <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+      {/* Sub-nav — two rows on mobile */}
+      <div style={{ marginBottom:"20px", borderBottom:`1px solid ${T.border}`, paddingBottom:"12px" }}>
+        {/* Row 1: view tabs + refresh */}
+        <div style={{ display:"flex", alignItems:"center", gap:"4px", flexWrap:"wrap", rowGap:"8px" }}>
+          <NavBtn id="overview" label="Overview"/>
+          <NavBtn id="holdings" label="Holdings"/>
+          <NavBtn id="grants"   label="Grants"/>
+          <div style={{ flex:1 }}/>
           {staleMins !== null && (
-            <span style={{ fontSize:"11px", color:staleMins>15?T.amber:T.textMuted }}>
-              prices {staleMins}m ago
+            <span style={{ fontSize:"11px", color:staleMins>15?T.amber:T.textMuted, flexShrink:0 }}>
+              {staleMins}m ago
             </span>
           )}
           <button onClick={fetchPrices} disabled={fetching}
             style={{ padding:"6px 14px", background:T.card, border:`1px solid ${T.border}`,
-              borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
-            {fetching ? "…" : "↻ Refresh"}
+              borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer", flexShrink:0 }}>
+            {fetching ? "…" : "↻"}
           </button>
-          {view==="holdings" && (
-            <>
-              <button onClick={() => setShowTradebookImport(true)}
-                style={{ padding:"6px 14px", background:T.card, border:`1px solid ${T.border}`,
-                  borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
-                ⬆ Tradebook
-              </button>
-              <button onClick={() => setShowAddForm(v => !v)}
-                style={{ padding:"6px 14px", background:T.accent, border:"none",
-                  borderRadius:"8px", color:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
-                {showAddForm ? "✕ Cancel" : "+ Add Holding"}
-              </button>
-            </>
-          )}
         </div>
+        {/* Row 2: action buttons (holdings only) */}
+        {view==="holdings" && (
+          <div style={{ display:"flex", gap:"8px", marginTop:"10px", flexWrap:"wrap" }}>
+            <button onClick={() => setShowTradebookImport(true)}
+              style={{ flex:1, padding:"8px 14px", background:T.card, border:`1px solid ${T.border}`,
+                borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+              ⬆ Tradebook
+            </button>
+            <button onClick={() => setShowAddForm(v => !v)}
+              style={{ flex:1, padding:"8px 14px", background:T.accent, border:"none",
+                borderRadius:"8px", color:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
+              {showAddForm ? "✕ Cancel" : "+ Add Holding"}
+            </button>
+          </div>
+        )}
       </div>
 
       {showAddForm && view==="holdings" && (

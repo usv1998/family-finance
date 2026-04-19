@@ -49,26 +49,26 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
 
   return (
     <div>
-      {/* Top toolbar */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"12px", marginBottom:"20px" }}>
+      {/* Top toolbar — stacks on mobile */}
+      <div style={{ display:"flex", flexDirection:"column", gap:"10px", marginBottom:"20px" }}>
         <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
           {/* Section toggle */}
           <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px" }}>
             <button onClick={()=>setSection("table")}  style={btnStyle(section==="table")}>Table</button>
             <button onClick={()=>setSection("charts")} style={btnStyle(section==="charts")}>Charts</button>
           </div>
-          {/* Person/view toggle — only in table view */}
+          {/* Person/view toggle */}
           {section === "table" && (
             <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px" }}>
-              {[{value:"combined",label:"Combined"},{value:"Selva",label:"Selva"},{value:"Akshaya",label:"Akshaya"}].map(v=>(
+              {[{value:"combined",label:"All"},{value:"Selva",label:"Selva"},{value:"Akshaya",label:"Akshaya"}].map(v=>(
                 <button key={v.value} onClick={()=>setViewMode(v.value)} style={btnStyle(viewMode===v.value)}>{v.label}</button>
               ))}
             </div>
           )}
+          {section === "table" && (
+            <button onClick={exportCSV} style={{ padding:"8px 16px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", cursor:"pointer", fontWeight:600 }}>CSV ↓</button>
+          )}
         </div>
-        {section === "table" && (
-          <button onClick={exportCSV} style={{ padding:"8px 16px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textDim, fontSize:"12px", cursor:"pointer", fontWeight:600 }}>Export CSV ↓</button>
-        )}
       </div>
 
       <SummaryCards incomeData={incomeData} rsuData={rsuData} investmentsData={investmentsData} fy={fy}/>
@@ -80,17 +80,18 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
             onSelectMonth={mi=>{ setEditMonth(mi); if(viewMode!=="combined") setEditPerson(viewMode); setTimeout(()=>editRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),50); }}/>
           <div ref={editRef} style={{ marginTop:"24px" }}>
             <h3 style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"12px" }}>Enter Monthly Income</h3>
-            <div style={{ display:"flex", gap:"8px", flexWrap:"wrap", marginBottom:"16px" }}>
-              <select value={editPerson} onChange={e=>setEditPerson(e.target.value)} style={selectStyle}>
+            <div style={{ display:"flex", flexDirection:"column", gap:"10px", marginBottom:"16px" }}>
+              <select value={editPerson} onChange={e=>setEditPerson(e.target.value)}
+                style={{ ...selectStyle, width:"100%" }}>
                 {PERSONS.map(p=><option key={p} value={p}>{p} ({EMPLOYER[p]})</option>)}
               </select>
-              <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px", overflowX:"auto" }}>
+              <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px", overflowX:"auto", scrollbarWidth:"none" }}>
                 {MONTHS.map((m,i)=>{
                   const hasData=incomeData?.[fy]?.[editPerson]?.[i]?.take_home;
                   const isCurr = i === highlightMonth;
                   return (
                     <button key={m} onClick={()=>setEditMonth(editMonth===i?null:i)}
-                      style={{...btnStyle(editMonth===i),padding:"6px 10px",fontSize:"12px",position:"relative",
+                      style={{...btnStyle(editMonth===i),padding:"8px 10px",fontSize:"12px",position:"relative",flexShrink:0,
                         ...(hasData&&editMonth!==i?{color:T.accent}:{}),
                         ...(isCurr&&editMonth!==i?{outline:`2px solid ${T.accent}`,outlineOffset:"2px"}:{})}}>
                       {m}
