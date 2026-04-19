@@ -10,6 +10,7 @@ import HoldingCard from "./HoldingCard";
 import CasImportModal from "./CasImportModal";
 import TradebookImportModal from "./TradebookImportModal";
 import RsuTab from "../rsu/RsuTab";
+import PortfolioGrowthChart from "../charts/PortfolioGrowthChart";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -850,7 +851,21 @@ export default function PortfolioTab({
           onClose={() => setShowCasImport(false)}/>
       )}
 
-      {view==="overview" && <OverviewView enriched={enriched} totalNW={totalNW}/>}
+      {view==="overview" && (
+        <>
+          <OverviewView enriched={enriched} totalNW={totalNW}/>
+          <div style={{ marginTop:"16px" }}>
+            <PortfolioGrowthChart
+              equityHoldings={enriched.filter(h =>
+                ["us_stock","in_stock","mf"].includes(h.type) &&
+                h.acquisitionDate &&
+                h.source !== "goal"
+              )}
+              liveData={liveData}
+            />
+          </div>
+        </>
+      )}
       {view==="holdings" && (
         <HoldingsView grouped={grouped} priceMap={priceMap} usdinr={usdinr}
           onDelete={onDeleteHolding}
