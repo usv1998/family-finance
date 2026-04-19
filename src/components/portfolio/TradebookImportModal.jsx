@@ -1,12 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { T } from "../../lib/theme";
 import { PERSONS } from "../../lib/constants";
 import { genId } from "../../lib/formatters";
 
 // ── parser ─────────────────────────────────────────────────────────────────
 
-// Parse Zerodha tradebook CSV. Returns { stocks: [...], mfs: [...] }
-// Stocks grouped by symbol, MFs grouped by ISIN (name varies per SIP row).
 function parseTradebook(text) {
   const lines = text.trim().split("\n").map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) throw new Error("File appears empty.");
@@ -20,17 +18,17 @@ function parseTradebook(text) {
     return i;
   };
 
-  const symCol     = col("symbol");
-  const isinCol    = col("isin");
-  const dateCol    = col("trade_date");
-  const segCol     = col("segment");
-  const typeCol    = col("trade_type");
-  const qtyCol     = col("quantity");
-  const priceCol   = col("price");
-  const orderCol   = col("order_id");
+  const symCol   = col("symbol");
+  const isinCol  = col("isin");
+  const dateCol  = col("trade_date");
+  const segCol   = col("segment");
+  const typeCol  = col("trade_type");
+  const qtyCol   = col("quantity");
+  const priceCol = col("price");
+  const orderCol = col("order_id");
 
-  const stockOrders = {}; // key: orderId → { symbol, isin, date, qty, value }
-  const mfByIsin    = {}; // key: isin    → { isin, name, lots[] }
+  const stockOrders = {};
+  const mfByIsin    = {};
 
   for (let i = 1; i < lines.length; i++) {
     const cells = lines[i].split(",").map(unquote);
@@ -45,14 +43,11 @@ function parseTradebook(text) {
     if (qty <= 0 || price <= 0 || !date) continue;
 
     if (segment === "MF") {
-      // Each row is its own SIP lot (order_id = trade_id for MFs)
       const rawName = cells[symCol];
       if (!mfByIsin[isin]) mfByIsin[isin] = { isin, name: rawName, lots: [] };
-      // Prefer the shortest clean name (later rows sometimes have cleaner names)
       if (rawName.length < mfByIsin[isin].name.length) mfByIsin[isin].name = rawName;
       mfByIsin[isin].lots.push({ date, qty, navPrice: price, costBasisINR: qty * price });
     } else {
-      // EQ: aggregate fills within same order_id
       const symbol  = cells[symCol].toUpperCase();
       const orderId = cells[orderCol] || `${symbol}-${date}-${price}`;
       if (!stockOrders[orderId]) stockOrders[orderId] = { symbol, isin, date, totalQty:0, totalValue:0 };
@@ -61,7 +56,6 @@ function parseTradebook(text) {
     }
   }
 
-  // Build stock list grouped by symbol
   const bySymbol = {};
   for (const o of Object.values(stockOrders)) {
     if (!bySymbol[o.symbol]) bySymbol[o.symbol] = { symbol:o.symbol, isin:o.isin, lots:[] };
@@ -72,14 +66,11 @@ function parseTradebook(text) {
     });
   }
 
-  // Build MF list: sort lots by date, compute totals
   const mfList = Object.values(mfByIsin).map(f => {
     f.lots.sort((a,b) => a.date.localeCompare(b.date));
-    return {
-      ...f,
+    return { ...f,
       totalUnits: f.lots.reduce((s,l) => s + l.qty, 0),
       totalCost:  f.lots.reduce((s,l) => s + l.costBasisINR, 0),
-      schemeCode: null, // resolved async via mfapi
     };
   });
 
@@ -93,46 +84,142 @@ function parseTradebook(text) {
   return { stocks, mfs: mfList };
 }
 
-// Fetch AMFI NAV master file and build ISIN → schemeCode map.
-// Format: SchemeCode;ISINGrowth;ISINDivReinvest;SchemeName;NAV;Date
-let _amfiMapPromise = null;
-async function getAmfiMap() {
-  if (_amfiMapPromise) return _amfiMapPromise;
-  _amfiMapPromise = (async () => {
-    try {
-      const res = await fetch("https://portal.amfiindia.com/spages/NAVAll.txt", { cache: "force-cache" });
-      if (!res.ok) return {};
-      const text = await res.text();
-      const map = {};
-      for (const line of text.split("\n")) {
-        const parts = line.split(";");
-        if (parts.length < 4) continue;
-        const code  = parts[0].trim();
-        const isin1 = parts[1].trim();
-        const isin2 = parts[2].trim();
-        if (!code || isNaN(Number(code))) continue;
-        if (isin1 && isin1 !== "-") map[isin1] = code;
-        if (isin2 && isin2 !== "-") map[isin2] = code;
-      }
-      return map;
-    } catch { return {}; }
-  })();
-  return _amfiMapPromise;
+// Search mfapi by query string → [{schemeCode, schemeName}]
+async function searchMFApi(query) {
+  try {
+    const res = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
 }
 
-async function resolveSchemeCode(isin) {
-  const map = await getAmfiMap();
-  return map[isin] || null;
+// Auto-resolve: pick best keywords from fund name and search
+async function autoResolve(name) {
+  // Strip common trailing suffixes, take first meaningful chunk
+  const cleaned = name
+    .replace(/[-–]\s*(direct plan|regular plan|growth|idcw|dividend).*/gi, "")
+    .trim();
+  const words = cleaned.split(/\s+/).slice(0, 4).join(" ");
+  const results = await searchMFApi(words);
+  // Prefer Direct Plan Growth match
+  const direct = results.find(r => /direct/i.test(r.schemeName) && /growth/i.test(r.schemeName));
+  return { results, picked: direct || results[0] || null };
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-const fmt    = n => n == null ? "—" : `₹${Math.round(n).toLocaleString("en-IN")}`;
-const fmtPrc = n => n == null ? "—" : `₹${n.toLocaleString("en-IN", { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+const fmt     = n => n == null ? "—" : `₹${Math.round(n).toLocaleString("en-IN")}`;
+const fmtPrc  = n => n == null ? "—" : `₹${n.toLocaleString("en-IN", { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
 const fmtDate = d => new Date(d).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" });
-const fmtUnits = n => n == null ? "—" : (n % 1 === 0 ? String(n) : n.toFixed(3).replace(/0+$/,""));
+const fmtU    = n => n == null ? "—" : (n % 1 === 0 ? String(n) : n.toFixed(3).replace(/0+$/,""));
 
-// ── component ──────────────────────────────────────────────────────────────
+// ── MF scheme resolver row ─────────────────────────────────────────────────
+
+function MFResolveRow({ fund, mapping, onSetMapping }) {
+  const [query,   setQuery]   = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const debounceRef = useRef(null);
+
+  // Run initial auto-resolve once
+  useEffect(() => {
+    autoResolve(fund.name).then(({ results: r, picked }) => {
+      setResults(r);
+      if (picked && !mapping) onSetMapping({ schemeCode: String(picked.schemeCode), schemeName: picked.schemeName });
+    });
+  }, [fund.isin]);
+
+  const handleSearch = (q) => {
+    setQuery(q);
+    clearTimeout(debounceRef.current);
+    if (!q.trim()) { setResults([]); return; }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      const r = await searchMFApi(q);
+      setResults(r);
+      setSearching(false);
+      setOpen(true);
+    }, 350);
+  };
+
+  const pick = (r) => {
+    onSetMapping({ schemeCode: String(r.schemeCode), schemeName: r.schemeName });
+    setOpen(false);
+    setQuery("");
+  };
+
+  const matched = mapping;
+
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", alignItems:"start",
+      padding:"10px 0", borderBottom:`1px solid ${T.border}33` }}>
+
+      {/* Left: tradebook name */}
+      <div>
+        <div style={{ fontSize:"12px", fontWeight:600, color:T.text, lineHeight:1.4 }}>{fund.name}</div>
+        <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"3px" }}>
+          {fmtU(fund.totalUnits)} units · {fmt(fund.totalCost)} · {fund.lots.length} SIP{fund.lots.length!==1?"s":""}
+        </div>
+        <div style={{ fontSize:"10px", color:T.textMuted, fontFamily:"'JetBrains Mono',monospace", marginTop:"1px" }}>{fund.isin}</div>
+      </div>
+
+      {/* Right: matched fund + search override */}
+      <div style={{ position:"relative" }}>
+        {matched ? (
+          <div style={{ padding:"8px 10px", borderRadius:"8px", background:T.card,
+            border:`1px solid ${T.accent}44`, marginBottom:"6px" }}>
+            <div style={{ fontSize:"11px", fontWeight:600, color:T.accent, lineHeight:1.4 }}>{matched.schemeName}</div>
+            <div style={{ fontSize:"10px", color:T.textMuted, fontFamily:"'JetBrains Mono',monospace", marginTop:"2px" }}>
+              #{matched.schemeCode}
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding:"8px 10px", borderRadius:"8px", background:`${T.amber}12`,
+            border:`1px solid ${T.amber}44`, marginBottom:"6px", fontSize:"11px", color:T.amber }}>
+            No match found — search below
+          </div>
+        )}
+
+        {/* Search box */}
+        <div style={{ position:"relative" }}>
+          <input
+            value={query}
+            onChange={e => handleSearch(e.target.value)}
+            onFocus={() => results.length > 0 && setOpen(true)}
+            placeholder="Search to change…"
+            style={{ width:"100%", padding:"6px 10px", background:T.bg, border:`1px solid ${T.border}`,
+              borderRadius:"7px", color:T.text, fontSize:"11px", outline:"none", boxSizing:"border-box" }}/>
+          {searching && (
+            <span style={{ position:"absolute", right:"8px", top:"7px", fontSize:"10px", color:T.textMuted }}>…</span>
+          )}
+        </div>
+
+        {/* Dropdown */}
+        {open && results.length > 0 && (
+          <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:100,
+            background:T.surface, border:`1px solid ${T.border}`, borderRadius:"8px",
+            maxHeight:"180px", overflowY:"auto", marginTop:"2px", boxShadow:"0 8px 24px rgba(0,0,0,0.4)" }}>
+            {results.slice(0, 20).map(r => (
+              <div key={r.schemeCode} onClick={() => pick(r)}
+                style={{ padding:"8px 12px", cursor:"pointer", borderBottom:`1px solid ${T.border}22`,
+                  fontSize:"11px", color:T.text, lineHeight:1.4 }}
+                onMouseEnter={e => e.currentTarget.style.background = T.card}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <div>{r.schemeName}</div>
+                <div style={{ fontSize:"10px", color:T.textMuted, fontFamily:"'JetBrains Mono',monospace" }}>
+                  #{r.schemeCode}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── main component ─────────────────────────────────────────────────────────
 
 export default function TradebookImportModal({ holdingsData, onReplaceStockLots, onReplaceMFLots, onClose }) {
   const [stocks,    setStocks]    = useState([]);
@@ -141,40 +228,37 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
   const [selStocks, setSelStocks] = useState(new Set());
   const [selMFs,    setSelMFs]    = useState(new Set());
   const [expanded,  setExpanded]  = useState(new Set());
-  const [resolving, setResolving] = useState(false);
+  // mfMappings: { [isin]: { schemeCode, schemeName } }
+  const [mfMappings, setMfMappings] = useState({});
   const [error,     setError]     = useState("");
+  // steps: "upload" | "resolve" (MF mapping table) | "preview"
   const [step,      setStep]      = useState("upload");
   const fileRef = useRef(null);
 
   const handleFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
         const { stocks: s, mfs: m } = parseTradebook(e.target.result);
         setStocks(s);
         setMFs(m);
         setSelStocks(new Set(s.map(x => x.symbol)));
         setSelMFs(new Set(m.map(x => x.isin)));
+        setMfMappings({});
         setExpanded(new Set());
         setError("");
-        setStep("preview");
-
-        // Async: resolve ISIN → schemeCode for each MF
-        if (m.length > 0) {
-          setResolving(true);
-          const resolved = await Promise.all(
-            m.map(async f => ({ ...f, schemeCode: await resolveSchemeCode(f.isin) }))
-          );
-          setMFs(resolved);
-          setResolving(false);
-        }
+        // If MFs present, go to resolve step first; else straight to preview
+        setStep(m.length > 0 ? "resolve" : "preview");
       } catch (err) {
         setError(err.message);
       }
     };
     reader.readAsText(file);
   };
+
+  const setMapping = (isin, mapping) =>
+    setMfMappings(prev => ({ ...prev, [isin]: mapping }));
 
   const toggleExpand = key =>
     setExpanded(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -188,11 +272,13 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
   const totalSelected = selStocks.size + selMFs.size;
 
   const doImport = () => {
-    if (selStocks.size > 0) {
+    if (selStocks.size > 0)
       onReplaceStockLots(person, stocks.filter(s => selStocks.has(s.symbol)));
-    }
     if (selMFs.size > 0) {
-      onReplaceMFLots(person, mfs.filter(f => selMFs.has(f.isin)));
+      const toImport = mfs
+        .filter(f => selMFs.has(f.isin))
+        .map(f => ({ ...f, ...(mfMappings[f.isin] || {}) }));
+      onReplaceMFLots(person, toImport);
     }
     onClose();
   };
@@ -208,49 +294,40 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
     </div>
   );
 
+  const stepLabel = { upload:"Upload", resolve:"Match Funds", preview:"Confirm" };
+
   return (
     <div onClick={onClose}
       style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:2000,
         display:"flex", alignItems:"center", justifyContent:"center", padding:"20px" }}>
       <div onClick={e => e.stopPropagation()}
         style={{ background:T.surface, borderRadius:"16px", border:`1px solid ${T.border}`,
-          width:"100%", maxWidth:"740px", maxHeight:"88vh", overflow:"hidden",
+          width:"100%", maxWidth:"820px", maxHeight:"90vh", overflow:"hidden",
           display:"flex", flexDirection:"column" }}>
 
         {/* Header */}
         <div style={{ padding:"16px 20px", borderBottom:`1px solid ${T.border}`,
           display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div>
+          <div style={{ display:"flex", alignItems:"center", gap:"16px" }}>
             <span style={{ fontSize:"15px", fontWeight:700, color:T.text }}>Import from Zerodha Tradebook</span>
-            {step === "preview" && (
-              <span style={{ fontSize:"11px", color:T.textMuted, marginLeft:"12px" }}>
-                {totalSelected} item{totalSelected !== 1 ? "s" : ""} selected
-                {resolving && <span style={{ color:T.amber, marginLeft:"8px" }}>· resolving fund codes…</span>}
-              </span>
-            )}
+            {/* Step pills */}
+            <div style={{ display:"flex", gap:"4px" }}>
+              {["upload","resolve","preview"].map((s, i) => (
+                <span key={s} style={{ fontSize:"10px", fontWeight:600, padding:"2px 8px", borderRadius:"4px",
+                  background: step === s ? T.accent : T.card,
+                  color:      step === s ? T.bg     : T.textMuted }}>
+                  {i+1}. {stepLabel[s]}
+                </span>
+              ))}
+            </div>
           </div>
           <button onClick={onClose} style={{ background:"none", border:"none", color:T.textMuted,
             fontSize:"22px", cursor:"pointer", padding:"0 4px" }}>×</button>
         </div>
 
-        <div style={{ overflowY:"auto", padding:"20px", display:"flex", flexDirection:"column", gap:"16px" }}>
+        <div style={{ overflowY:"auto", padding:"20px", display:"flex", flexDirection:"column", gap:"16px", flex:1 }}>
 
-          {/* Instructions */}
-          {step === "upload" && (
-            <div style={{ background:T.card, borderRadius:"10px", padding:"16px",
-              border:`1px solid ${T.border}`, fontSize:"13px", color:T.textDim, lineHeight:1.7 }}>
-              <div style={{ fontWeight:700, color:T.text, marginBottom:"8px" }}>How to export from Zerodha</div>
-              <div>1. Open <strong style={{ color:T.text }}>Console → Reports → Tradebook</strong></div>
-              <div>2. Select segment <strong style={{ color:T.text }}>Equity</strong> or <strong style={{ color:T.text }}>Mutual Fund</strong>, set date range</div>
-              <div>3. Click <strong style={{ color:T.text }}>Download</strong> → upload the CSV here</div>
-              <div style={{ marginTop:"8px", fontSize:"11px", color:T.textMuted }}>
-                Works with EQ and MF tradebook files. Upload one at a time or combine by copying rows.
-                Existing holdings for selected symbols/funds will be fully replaced.
-              </div>
-            </div>
-          )}
-
-          {/* Person selector */}
+          {/* Person selector — always visible */}
           <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
             <span style={{ fontSize:"12px", color:T.textMuted, fontWeight:600 }}>Import as:</span>
             {PERSONS.map(p => (
@@ -264,23 +341,27 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
             ))}
           </div>
 
-          {/* Drop zone */}
+          {/* ── STEP 1: Upload ── */}
           {step === "upload" && (
-            <div onClick={() => fileRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-              style={{ border:`2px dashed ${T.border}`, borderRadius:"12px", padding:"40px 20px",
-                textAlign:"center", cursor:"pointer", transition:"border-color 0.15s" }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = T.accent}
-              onMouseLeave={e => e.currentTarget.style.borderColor = T.border}>
-              <div style={{ fontSize:"32px", marginBottom:"8px" }}>📊</div>
-              <div style={{ fontSize:"14px", fontWeight:600, color:T.text }}>Click or drag tradebook CSV here</div>
-              <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"4px" }}>
-                Zerodha Console → Reports → Tradebook (EQ or MF)
+            <>
+              <div style={{ background:T.card, borderRadius:"10px", padding:"14px 16px",
+                border:`1px solid ${T.border}`, fontSize:"12px", color:T.textDim, lineHeight:1.7 }}>
+                <div style={{ fontWeight:700, color:T.text, marginBottom:"6px" }}>How to export from Zerodha</div>
+                <div>Console → Reports → Tradebook → select <strong style={{ color:T.text }}>Equity</strong> or <strong style={{ color:T.text }}>Mutual Fund</strong> → Download</div>
               </div>
-              <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display:"none" }}
-                onChange={e => handleFile(e.target.files[0])}/>
-            </div>
+              <div onClick={() => fileRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+                style={{ border:`2px dashed ${T.border}`, borderRadius:"12px", padding:"40px 20px",
+                  textAlign:"center", cursor:"pointer", transition:"border-color 0.15s" }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = T.accent}
+                onMouseLeave={e => e.currentTarget.style.borderColor = T.border}>
+                <div style={{ fontSize:"32px", marginBottom:"8px" }}>📊</div>
+                <div style={{ fontSize:"14px", fontWeight:600, color:T.text }}>Click or drag tradebook CSV here</div>
+                <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display:"none" }}
+                  onChange={e => handleFile(e.target.files[0])}/>
+              </div>
+            </>
           )}
 
           {error && (
@@ -288,29 +369,58 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
               borderRadius:"8px", fontSize:"12px", color:T.red }}>{error}</div>
           )}
 
-          {/* Preview */}
+          {/* ── STEP 2: MF Fund Matching ── */}
+          {step === "resolve" && (
+            <>
+              <div style={{ background:`${T.amber}10`, border:`1px solid ${T.amber}33`, borderRadius:"10px",
+                padding:"10px 14px", fontSize:"12px", color:T.textDim, lineHeight:1.5 }}>
+                <strong style={{ color:T.amber }}>Verify fund matches</strong> — auto-matched using fund name keywords.
+                Search and pick the correct fund if the match looks wrong.
+              </div>
+
+              {/* Column headers */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px",
+                padding:"6px 0", borderBottom:`1px solid ${T.border}` }}>
+                <div style={{ fontSize:"10px", fontWeight:700, color:T.textMuted, letterSpacing:"0.5px" }}>
+                  TRADEBOOK FUND NAME
+                </div>
+                <div style={{ fontSize:"10px", fontWeight:700, color:T.textMuted, letterSpacing:"0.5px" }}>
+                  MATCHED FUND (tap to change)
+                </div>
+              </div>
+
+              {mfs.map(f => (
+                <MFResolveRow
+                  key={f.isin}
+                  fund={f}
+                  mapping={mfMappings[f.isin]}
+                  onSetMapping={m => setMapping(f.isin, m)}/>
+              ))}
+            </>
+          )}
+
+          {/* ── STEP 3: Preview ── */}
           {step === "preview" && (
             <>
-              {/* Indian Stocks */}
               {stocks.length > 0 && (
                 <div>
                   <SectionHeader label="Indian Stocks" count={stocks.length}/>
                   <div style={{ display:"flex", flexDirection:"column", gap:"6px" }}>
                     {stocks.map(s => {
-                      const sel      = selStocks.has(s.symbol);
-                      const open     = expanded.has(s.symbol);
+                      const sel  = selStocks.has(s.symbol);
+                      const open = expanded.has(s.symbol);
                       const existing = holdingsData.filter(h =>
                         h.type === "in_stock" && h.symbol === s.symbol && h.person === person);
                       return (
                         <div key={s.symbol}
                           style={{ borderRadius:"10px", border:`1px solid ${sel ? T.accent+"66" : T.border}`,
-                            background: sel ? T.card : T.bg, overflow:"hidden", transition:"all 0.12s" }}>
+                            background: sel ? T.card : T.bg, overflow:"hidden" }}>
                           <div style={{ padding:"11px 14px", display:"flex", alignItems:"center", gap:"12px" }}>
-                            <div onClick={() => toggleStock(s.symbol)} style={{ width:"18px", height:"18px",
-                              borderRadius:"5px", flexShrink:0, cursor:"pointer",
-                              border:`2px solid ${sel ? T.accent : T.border}`,
-                              background: sel ? T.accent : "transparent",
-                              display:"flex", alignItems:"center", justifyContent:"center" }}>
+                            <div onClick={() => toggleStock(s.symbol)}
+                              style={{ width:"18px", height:"18px", borderRadius:"5px", flexShrink:0,
+                                cursor:"pointer", border:`2px solid ${sel ? T.accent : T.border}`,
+                                background: sel ? T.accent : "transparent",
+                                display:"flex", alignItems:"center", justifyContent:"center" }}>
                               {sel && <span style={{ color:T.bg, fontSize:"11px", fontWeight:900 }}>✓</span>}
                             </div>
                             <div style={{ flex:1, minWidth:0 }}>
@@ -321,9 +431,7 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
                                   {s.lots.length} lot{s.lots.length!==1?"s":""}
                                 </span>
                                 {existing.length > 0 && (
-                                  <span style={{ fontSize:"10px", color:T.amber, fontWeight:600 }}>
-                                    ⟳ replaces {existing.length}
-                                  </span>
+                                  <span style={{ fontSize:"10px", color:T.amber, fontWeight:600 }}>⟳ replaces {existing.length}</span>
                                 )}
                               </div>
                               <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"2px" }}>
@@ -356,55 +464,52 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
                 </div>
               )}
 
-              {/* Mutual Funds */}
               {mfs.length > 0 && (
                 <div>
                   <SectionHeader label="Mutual Funds" count={mfs.length}/>
                   <div style={{ display:"flex", flexDirection:"column", gap:"6px" }}>
                     {mfs.map(f => {
-                      const sel      = selMFs.has(f.isin);
-                      const open     = expanded.has(f.isin);
+                      const sel     = selMFs.has(f.isin);
+                      const open    = expanded.has(f.isin);
+                      const mapped  = mfMappings[f.isin];
                       const existing = holdingsData.filter(h =>
                         h.type === "mf" && h.person === person &&
-                        (h.isin === f.isin || (f.schemeCode && h.schemeCode === f.schemeCode)));
+                        (h.isin === f.isin || (mapped?.schemeCode && h.schemeCode === mapped.schemeCode)));
                       return (
                         <div key={f.isin}
                           style={{ borderRadius:"10px", border:`1px solid ${sel ? T.accent+"66" : T.border}`,
-                            background: sel ? T.card : T.bg, overflow:"hidden", transition:"all 0.12s" }}>
+                            background: sel ? T.card : T.bg, overflow:"hidden" }}>
                           <div style={{ padding:"11px 14px", display:"flex", alignItems:"center", gap:"12px" }}>
-                            <div onClick={() => toggleMF(f.isin)} style={{ width:"18px", height:"18px",
-                              borderRadius:"5px", flexShrink:0, cursor:"pointer",
-                              border:`2px solid ${sel ? T.accent : T.border}`,
-                              background: sel ? T.accent : "transparent",
-                              display:"flex", alignItems:"center", justifyContent:"center" }}>
+                            <div onClick={() => toggleMF(f.isin)}
+                              style={{ width:"18px", height:"18px", borderRadius:"5px", flexShrink:0,
+                                cursor:"pointer", border:`2px solid ${sel ? T.accent : T.border}`,
+                                background: sel ? T.accent : "transparent",
+                                display:"flex", alignItems:"center", justifyContent:"center" }}>
                               {sel && <span style={{ color:T.bg, fontSize:"11px", fontWeight:900 }}>✓</span>}
                             </div>
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                                <span style={{ fontSize:"12px", fontWeight:700, color:T.text,
-                                  whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:"340px" }}>
-                                  {f.name}
+                                <span style={{ fontSize:"12px", fontWeight:700, color:T.text }}>
+                                  {mapped?.schemeName || f.name}
                                 </span>
+                                {mapped?.schemeCode && (
+                                  <span style={{ fontSize:"10px", color:T.accent, fontFamily:"'JetBrains Mono',monospace" }}>
+                                    #{mapped.schemeCode}
+                                  </span>
+                                )}
+                                {!mapped && (
+                                  <span style={{ fontSize:"10px", color:T.amber }}>⚠ unmatched</span>
+                                )}
                                 <span style={{ fontSize:"10px", color:T.textMuted, background:T.bg,
-                                  border:`1px solid ${T.border}`, borderRadius:"4px", padding:"1px 6px", flexShrink:0 }}>
+                                  border:`1px solid ${T.border}`, borderRadius:"4px", padding:"1px 6px" }}>
                                   {f.lots.length} SIP{f.lots.length!==1?"s":""}
                                 </span>
-                                {f.schemeCode
-                                  ? <span style={{ fontSize:"10px", color:T.accent, fontFamily:"'JetBrains Mono',monospace" }}>
-                                      #{f.schemeCode}
-                                    </span>
-                                  : resolving
-                                    ? <span style={{ fontSize:"10px", color:T.textMuted }}>resolving…</span>
-                                    : <span style={{ fontSize:"10px", color:T.amber }}>⚠ scheme code not found</span>
-                                }
                                 {existing.length > 0 && (
-                                  <span style={{ fontSize:"10px", color:T.amber, fontWeight:600 }}>
-                                    ⟳ replaces {existing.length}
-                                  </span>
+                                  <span style={{ fontSize:"10px", color:T.amber, fontWeight:600 }}>⟳ replaces {existing.length}</span>
                                 )}
                               </div>
                               <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"2px" }}>
-                                {fmtUnits(f.totalUnits)} units · invested {fmt(f.totalCost)}
+                                {fmtU(f.totalUnits)} units · invested {fmt(f.totalCost)}
                               </div>
                             </div>
                             <button onClick={() => toggleExpand(f.isin)}
@@ -419,7 +524,7 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
                               {f.lots.map((lot, i) => (
                                 <div key={i} style={{ display:"flex", gap:"14px", fontSize:"11px", color:T.textDim }}>
                                   <span style={{ fontFamily:"'JetBrains Mono',monospace", color:T.textMuted, minWidth:"88px" }}>{fmtDate(lot.date)}</span>
-                                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:T.text }}>{fmtUnits(lot.qty)} units</span>
+                                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:T.text }}>{fmtU(lot.qty)} units</span>
                                   <span>@ NAV {fmtPrc(lot.navPrice)}</span>
                                   <span style={{ marginLeft:"auto", fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}>{fmt(lot.costBasisINR)}</span>
                                 </div>
@@ -438,27 +543,44 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
 
         {/* Footer */}
         <div style={{ padding:"14px 20px", borderTop:`1px solid ${T.border}`,
-          display:"flex", justifyContent:"flex-end", gap:"10px" }}>
-          {step === "preview" && (
-            <button onClick={() => setStep("upload")}
-              style={{ padding:"9px 20px", background:"transparent", border:`1px solid ${T.border}`,
+          display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div>
+            {step === "resolve" && (
+              <button onClick={() => setStep("upload")}
+                style={{ padding:"9px 18px", background:"transparent", border:`1px solid ${T.border}`,
+                  borderRadius:"8px", color:T.textDim, fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
+                ← Back
+              </button>
+            )}
+            {step === "preview" && (
+              <button onClick={() => setStep(mfs.length > 0 ? "resolve" : "upload")}
+                style={{ padding:"9px 18px", background:"transparent", border:`1px solid ${T.border}`,
+                  borderRadius:"8px", color:T.textDim, fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
+                ← Back
+              </button>
+            )}
+          </div>
+          <div style={{ display:"flex", gap:"10px" }}>
+            <button onClick={onClose}
+              style={{ padding:"9px 18px", background:"transparent", border:`1px solid ${T.border}`,
                 borderRadius:"8px", color:T.textDim, fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
-              ← Back
+              Cancel
             </button>
-          )}
-          <button onClick={onClose}
-            style={{ padding:"9px 20px", background:"transparent", border:`1px solid ${T.border}`,
-              borderRadius:"8px", color:T.textDim, fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
-            Cancel
-          </button>
-          {step === "preview" && totalSelected > 0 && (
-            <button onClick={doImport} disabled={resolving}
-              style={{ padding:"9px 24px", background:T.accent, border:"none",
-                borderRadius:"8px", color:T.bg, fontSize:"13px", fontWeight:700,
-                cursor: resolving ? "not-allowed" : "pointer", opacity: resolving ? 0.6 : 1 }}>
-              {resolving ? "Resolving…" : `Import ${totalSelected} item${totalSelected!==1?"s":""}`}
-            </button>
-          )}
+            {step === "resolve" && (
+              <button onClick={() => setStep("preview")}
+                style={{ padding:"9px 24px", background:T.accent, border:"none",
+                  borderRadius:"8px", color:T.bg, fontSize:"13px", fontWeight:700, cursor:"pointer" }}>
+                Looks good →
+              </button>
+            )}
+            {step === "preview" && totalSelected > 0 && (
+              <button onClick={doImport}
+                style={{ padding:"9px 24px", background:T.accent, border:"none",
+                  borderRadius:"8px", color:T.bg, fontSize:"13px", fontWeight:700, cursor:"pointer" }}>
+                Import {totalSelected} item{totalSelected!==1?"s":""}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
