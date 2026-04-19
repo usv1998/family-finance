@@ -208,12 +208,15 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
-  // Bulk upsert from CAS import: match by schemeCode + person → update; else add new.
+  // Bulk upsert: match by schemeCode (mf) or symbol (in_stock) + person → update; else add new.
   const upsertHoldings = (person, items) => {
     let next = [...holdingsData];
     for (const item of items) {
       const idx = next.findIndex(h =>
-        h.type === "mf" && h.schemeCode === item.schemeCode && h.person === person
+        h.person === person && (
+          (h.type === "mf"       && h.schemeCode === item.schemeCode) ||
+          (h.type === "in_stock" && h.symbol     === item.symbol)
+        )
       );
       if (idx >= 0) {
         next[idx] = { ...next[idx], units: item.units, costBasisINR: item.costBasisINR };

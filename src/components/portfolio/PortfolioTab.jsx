@@ -6,6 +6,7 @@ import { fetchAllPrices, getCurrentValueINR } from "../../lib/priceService";
 import AddHoldingForm from "./AddHoldingForm";
 import HoldingCard from "./HoldingCard";
 import CasImportModal from "./CasImportModal";
+import ZerodhaImportModal from "./ZerodhaImportModal";
 import RsuTab from "../rsu/RsuTab";
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -390,7 +391,8 @@ export default function PortfolioTab({
 }) {
   const [view,          setView]          = useState("overview");
   const [showAddForm,   setShowAddForm]   = useState(false);
-  const [showCasImport, setShowCasImport] = useState(false);
+  const [showCasImport,     setShowCasImport]     = useState(false);
+  const [showZerodhaImport, setShowZerodhaImport] = useState(false);
   const [priceMap,    setPriceMap]    = useState({});
   const [fetching,    setFetching]    = useState(false);
   const [fetchedAt,   setFetchedAt]   = useState(null);
@@ -483,6 +485,11 @@ export default function PortfolioTab({
           </button>
           {view==="holdings" && (
             <>
+              <button onClick={() => setShowZerodhaImport(true)}
+                style={{ padding:"6px 14px", background:T.card, border:`1px solid ${T.border}`,
+                  borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+                ⬆ Import Zerodha
+              </button>
               <button onClick={() => setShowCasImport(true)}
                 style={{ padding:"6px 14px", background:T.card, border:`1px solid ${T.border}`,
                   borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
@@ -502,6 +509,13 @@ export default function PortfolioTab({
         <AddHoldingForm
           onAdd={h => { onAddHolding(h); }}
           onClose={() => setShowAddForm(false)}/>
+      )}
+
+      {showZerodhaImport && (
+        <ZerodhaImportModal
+          holdingsData={holdingsData}
+          onImport={onUpsertHoldings}
+          onClose={() => setShowZerodhaImport(false)}/>
       )}
 
       {showCasImport && (
