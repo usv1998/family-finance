@@ -3,7 +3,7 @@ import { supabase } from "./lib/supabase";
 import { TABS, EMPLOYER, LIVE_DEFAULTS } from "./lib/constants";
 import { isBiometricEnrolled, clearBiometricEnrollment } from "./lib/biometric";
 import { T } from "./lib/theme";
-import { getCurrentFY, getFYOptions } from "./lib/formatters";
+import { getCurrentFY, getFYOptions, genId } from "./lib/formatters";
 import { loadData, saveData } from "./lib/storage";
 import { SEED_DATA } from "./lib/seed";
 import { fetchLiveData } from "./lib/marketData";
@@ -208,15 +208,38 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
-  // Bulk upsert: match by schemeCode (mf) or symbol (in_stock) + person → update; else add new.
+  // Replace all lots for given in_stock symbols + person, then add new lots from tradebook.
+  const replaceStockLots = (person, stocks) => {
+    const symbols = new Set(stocks.map(s => s.symbol));
+    // Remove all existing lots for these symbols + person
+    let next = holdingsData.filter(h =>
+      !(h.type === "in_stock" && h.person === person && symbols.has(h.symbol))
+    );
+    // Add new per-lot holdings
+    for (const stock of stocks) {
+      for (const lot of stock.lots) {
+        next = [...next, {
+          id:              genId(),
+          type:            "in_stock",
+          person,
+          name:            stock.symbol,
+          symbol:          stock.symbol,
+          quantity:        lot.qty,
+          costBasisINR:    lot.costBasisINR,
+          acquisitionDate: lot.date,
+        }];
+      }
+    }
+    setHoldingsData(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+  };
+
+  // Bulk upsert: match by schemeCode (mf) + person → update; else add new.
   const upsertHoldings = (person, items) => {
     let next = [...holdingsData];
     for (const item of items) {
       const idx = next.findIndex(h =>
-        h.person === person && (
-          (h.type === "mf"       && h.schemeCode === item.schemeCode) ||
-          (h.type === "in_stock" && h.symbol     === item.symbol)
-        )
+        h.person === person && h.type === "mf" && h.schemeCode === item.schemeCode
       );
       if (idx >= 0) {
         next[idx] = { ...next[idx], units: item.units, costBasisINR: item.costBasisINR };
@@ -397,6 +420,7 @@ export default function FamilyFinanceTracker() {
             onUpdateHolding={updateHolding}
             onUpdateHoldingsBatch={updateHoldingsBatch}
             onUpsertHoldings={upsertHoldings}
+            onReplaceStockLots={replaceStockLots}
             onAddRsuEvent={addRsuEvent}
             onDeleteRsuEvent={deleteRsuEvent}
             onAddRsuGrant={addRsuGrant}

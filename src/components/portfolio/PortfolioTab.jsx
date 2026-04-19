@@ -6,7 +6,7 @@ import { fetchAllPrices, getCurrentValueINR } from "../../lib/priceService";
 import AddHoldingForm from "./AddHoldingForm";
 import HoldingCard from "./HoldingCard";
 import CasImportModal from "./CasImportModal";
-import ZerodhaImportModal from "./ZerodhaImportModal";
+import TradebookImportModal from "./TradebookImportModal";
 import RsuTab from "../rsu/RsuTab";
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -386,13 +386,13 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
 
 export default function PortfolioTab({
   holdingsData, rsuData, incomeData, investmentsData, rsuGrants, liveData, fy,
-  onAddHolding, onDeleteHolding, onUpdateHolding, onUpdateHoldingsBatch, onUpsertHoldings,
+  onAddHolding, onDeleteHolding, onUpdateHolding, onUpdateHoldingsBatch, onUpsertHoldings, onReplaceStockLots,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
   const [view,          setView]          = useState("overview");
   const [showAddForm,   setShowAddForm]   = useState(false);
   const [showCasImport,     setShowCasImport]     = useState(false);
-  const [showZerodhaImport, setShowZerodhaImport] = useState(false);
+  const [showTradebookImport, setShowTradebookImport] = useState(false);
   const [priceMap,    setPriceMap]    = useState({});
   const [fetching,    setFetching]    = useState(false);
   const [fetchedAt,   setFetchedAt]   = useState(null);
@@ -485,10 +485,10 @@ export default function PortfolioTab({
           </button>
           {view==="holdings" && (
             <>
-              <button onClick={() => setShowZerodhaImport(true)}
+              <button onClick={() => setShowTradebookImport(true)}
                 style={{ padding:"6px 14px", background:T.card, border:`1px solid ${T.border}`,
                   borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
-                ⬆ Import Zerodha
+                ⬆ Tradebook
               </button>
               <button onClick={() => setShowCasImport(true)}
                 style={{ padding:"6px 14px", background:T.card, border:`1px solid ${T.border}`,
@@ -511,11 +511,11 @@ export default function PortfolioTab({
           onClose={() => setShowAddForm(false)}/>
       )}
 
-      {showZerodhaImport && (
-        <ZerodhaImportModal
+      {showTradebookImport && (
+        <TradebookImportModal
           holdingsData={holdingsData}
-          onImport={onUpsertHoldings}
-          onClose={() => setShowZerodhaImport(false)}/>
+          onReplaceStockLots={onReplaceStockLots}
+          onClose={() => setShowTradebookImport(false)}/>
       )}
 
       {showCasImport && (
