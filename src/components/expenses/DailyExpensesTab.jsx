@@ -103,7 +103,7 @@ function DailyChart({ txList, month }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function DailyExpensesTab({ txData, expensesData, onAddTx, onDeleteTx }) {
-  const categories = expensesData?.["FY2026-27"]?.categories || DEFAULT_CATEGORIES;
+  const categories = DEFAULT_CATEGORIES;
 
   const [form, setForm] = useState({
     date: todayISO(),
@@ -142,8 +142,13 @@ export default function DailyExpensesTab({ txData, expensesData, onAddTx, onDele
     txData.filter(t => t.date.slice(0, 7) === selMonth).forEach(t => {
       map[t.categoryId] = (map[t.categoryId] || 0) + Number(t.amount);
     });
-    return categories
-      .map(c => ({ label: c.name, value: map[c.id] || 0, color: c.color }))
+    // Include all categories that have spend, even if not in DEFAULT_CATEGORIES
+    const allIds = new Set([...categories.map(c => c.id), ...Object.keys(map)]);
+    return [...allIds]
+      .map(id => {
+        const cat = categories.find(c => c.id === id);
+        return { id, label: cat?.name || id, value: map[id] || 0, color: cat?.color || T.textMuted };
+      })
       .filter(d => d.value > 0)
       .sort((a, b) => b.value - a.value);
   }, [txData, selMonth, categories]);
@@ -327,13 +332,13 @@ export default function DailyExpensesTab({ txData, expensesData, onAddTx, onDele
             background: !filterCat ? T.accent : T.card,
             color: !filterCat ? T.bg : T.textDim,
           }}>All</button>
-          {categories.filter(c => monthTx.some(t => t.categoryId === c.id)).map(c => (
+          {catTotals.map(c => (
             <button key={c.id} onClick={() => setFilterCat(f => f === c.id ? "" : c.id)} style={{
               padding:"4px 12px", borderRadius:"20px", border:"none", cursor:"pointer",
               fontSize:"11px", fontWeight:600,
               background: filterCat === c.id ? c.color : T.card,
               color: filterCat === c.id ? "#fff" : T.textDim,
-            }}>{c.name}</button>
+            }}>{c.label}</button>
           ))}
         </div>
       )}
