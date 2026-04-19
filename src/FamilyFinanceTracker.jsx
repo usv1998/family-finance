@@ -367,6 +367,13 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next);
   };
 
+  const editTx = (tx) => {
+    const next = txData.map(t => t.id === tx.id ? tx : t);
+    setTxData(next);
+    rollTxIntoExpenses(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next);
+  };
+
   // Recompute expensesData actuals from txList for all FY months.
   // FY months: Apr=0..Mar=11. A date in YYYY-MM maps to FY month index.
   const rollTxIntoExpenses = (txList) => {
@@ -504,6 +511,7 @@ export default function FamilyFinanceTracker() {
             txData={txData}
             onAddTx={addTx}
             onDeleteTx={deleteTx}
+            onEditTx={editTx}
           />
         )}
         {activeTab==="portfolio"&&(

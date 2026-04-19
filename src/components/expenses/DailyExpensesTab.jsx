@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { T } from "../../lib/theme";
 import { fmtINR, genId } from "../../lib/formatters";
-import { PERSONS } from "../../lib/constants";
 
 export const DEFAULT_CATEGORIES = [
   { id:"baby",          name:"Baby",             color:"#F472B6" },
@@ -24,11 +23,11 @@ function todayISO() {
 }
 
 function displayDate(iso) {
-  const d = new Date(iso + "T00:00:00");
   const today = todayISO();
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   if (iso === today) return "Today";
   if (iso === yesterday) return "Yesterday";
+  const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("en-IN", { weekday:"short", day:"2-digit", month:"short" });
 }
 
@@ -40,6 +39,19 @@ function displayMonth(ym) {
 function daysInMonth(ym) {
   const [y, m] = ym.split("-").map(Number);
   return new Date(y, m, 0).getDate();
+}
+
+// FY months for a given April-start fiscal year
+function fyMonths(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  const fyStartYear = m >= 4 ? y : y - 1;
+  const months = [];
+  for (let i = 0; i < 12; i++) {
+    const mo = ((3 + i) % 12) + 1;
+    const yr = i < 9 ? fyStartYear : fyStartYear + 1;
+    months.push(`${yr}-${String(mo).padStart(2,"0")}`);
+  }
+  return months;
 }
 
 // ── Donut ring ─────────────────────────────────────────────────────────────
@@ -103,11 +115,14 @@ function SparkBars({ txList, month }) {
   );
 }
 
-// ── Bottom sheet add form ─────────────────────────────────────────────────
-function AddSheet({ categories, onAdd, onClose }) {
+// ── Add/Edit bottom sheet ─────────────────────────────────────────────────
+function TxSheet({ categories, initial, onSave, onClose }) {
+  const isEdit = !!initial;
   const [form, setForm] = useState({
-    date: todayISO(), amount: "", categoryId: categories[0]?.id || "food",
-    note: "", person: "Selva",
+    date:       initial?.date       ?? todayISO(),
+    amount:     initial?.amount     ? String(initial.amount) : "",
+    categoryId: initial?.categoryId ?? categories[0]?.id ?? "food",
+    note:       initial?.note       ?? "",
   });
   const amountRef = useRef(null);
   useEffect(() => { amountRef.current?.focus(); }, []);
@@ -116,8 +131,13 @@ function AddSheet({ categories, onAdd, onClose }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.amount || Number(form.amount) <= 0) return;
-    onAdd({ id: genId(), date: form.date, amount: Number(form.amount),
-      categoryId: form.categoryId, note: form.note.trim(), person: form.person });
+    onSave({
+      id:         initial?.id ?? genId(),
+      date:       form.date,
+      amount:     Number(form.amount),
+      categoryId: form.categoryId,
+      note:       form.note.trim(),
+    });
     onClose();
   };
 
@@ -130,12 +150,10 @@ function AddSheet({ categories, onAdd, onClose }) {
 
   return (
     <>
-      {/* Backdrop */}
       <div onClick={onClose} style={{
         position:"fixed", inset:0, background:"rgba(0,0,0,0.6)",
         zIndex:100, backdropFilter:"blur(2px)",
       }}/>
-      {/* Sheet */}
       <div style={{
         position:"fixed", bottom:0, left:0, right:0, zIndex:101,
         background:T.surface, borderRadius:"20px 20px 0 0",
@@ -143,15 +161,13 @@ function AddSheet({ categories, onAdd, onClose }) {
         padding:"0 20px 32px",
         maxHeight:"90dvh", overflowY:"auto",
       }}>
-        {/* Handle */}
         <div style={{ display:"flex", justifyContent:"center", padding:"12px 0 16px" }}>
           <div style={{ width:"36px", height:"4px", borderRadius:"2px", background:T.border }}/>
         </div>
         <div style={{ fontSize:"16px", fontWeight:800, color:T.text, marginBottom:"20px" }}>
-          Add Expense
+          {isEdit ? "Edit Expense" : "Add Expense"}
         </div>
         <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
-          {/* Amount — biggest field */}
           <div>
             <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", display:"block", marginBottom:"6px" }}>AMOUNT (₹)</label>
             <input ref={amountRef} type="number" min="1" inputMode="numeric" value={form.amount}
@@ -159,7 +175,6 @@ function AddSheet({ categories, onAdd, onClose }) {
               required style={{ ...inp, fontSize:"28px", fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}/>
           </div>
 
-          {/* Category grid */}
           <div>
             <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", display:"block", marginBottom:"8px" }}>CATEGORY</label>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"8px" }}>
@@ -179,40 +194,23 @@ function AddSheet({ categories, onAdd, onClose }) {
             </div>
           </div>
 
-          {/* Note */}
           <div>
             <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", display:"block", marginBottom:"6px" }}>NOTE</label>
             <input type="text" value={form.note} onChange={e => set("note", e.target.value)}
               placeholder="What was this for?" style={inp}/>
           </div>
 
-          {/* Date + Person row */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px" }}>
-            <div>
-              <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", display:"block", marginBottom:"6px" }}>DATE</label>
-              <input type="date" value={form.date} onChange={e => set("date", e.target.value)}
-                style={{ ...inp, colorScheme:"dark" }}/>
-            </div>
-            <div>
-              <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", display:"block", marginBottom:"6px" }}>WHO</label>
-              <div style={{ display:"flex", gap:"6px" }}>
-                {PERSONS.map(p => (
-                  <button key={p} type="button" onClick={() => set("person", p)} style={{
-                    flex:1, padding:"12px 4px", borderRadius:"10px", border:"none", cursor:"pointer",
-                    fontSize:"13px", fontWeight:700,
-                    background: form.person === p ? (p==="Selva" ? T.selva : T.akshaya) : T.card,
-                    color: form.person === p ? "#fff" : T.textDim,
-                  }}>{p}</button>
-                ))}
-              </div>
-            </div>
+          <div>
+            <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, letterSpacing:"0.5px", display:"block", marginBottom:"6px" }}>DATE</label>
+            <input type="date" value={form.date} onChange={e => set("date", e.target.value)}
+              style={{ ...inp, colorScheme:"dark" }}/>
           </div>
 
           <button type="submit" style={{
             width:"100%", padding:"16px", background:T.accent, border:"none",
             borderRadius:"12px", color:T.bg, fontSize:"16px", fontWeight:800,
             cursor:"pointer", marginTop:"4px",
-          }}>Add Expense</button>
+          }}>{isEdit ? "Save Changes" : "Add Expense"}</button>
         </form>
       </div>
     </>
@@ -220,22 +218,19 @@ function AddSheet({ categories, onAdd, onClose }) {
 }
 
 // ── Main tab ───────────────────────────────────────────────────────────────
-export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx }) {
+export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx, onEditTx }) {
   const categories = DEFAULT_CATEGORIES;
   const catById = Object.fromEntries(categories.map(c => [c.id, c]));
 
-  const [showForm, setShowForm]   = useState(false);
+  const [sheet, setSheet]         = useState(null); // null | "add" | tx object (edit)
   const [filterCat, setFilterCat] = useState("");
   const [selMonth, setSelMonth]   = useState(() => {
     const n = new Date();
     return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
   });
 
-  const months = useMemo(() => {
-    const s = new Set(txData.map(t => t.date.slice(0,7)));
-    s.add(selMonth);
-    return [...s].sort().reverse();
-  }, [txData, selMonth]);
+  // All FY months for the current selected month's fiscal year
+  const months = useMemo(() => fyMonths(selMonth), [selMonth]);
 
   const monthTx = useMemo(() =>
     txData
@@ -272,6 +267,14 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx }) {
 
   const avgPerDay = monthTotal / Math.max(1, daysInMonth(selMonth));
 
+  const handleSave = (tx) => {
+    if (sheet && typeof sheet === "object") {
+      onEditTx(tx);
+    } else {
+      onAddTx(tx);
+    }
+  };
+
   return (
     <div style={{ paddingBottom:"100px" }}>
 
@@ -295,8 +298,6 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx }) {
             <DonutChart data={catTotals.slice(0,6)} total={monthTotal} size={90}/>
           )}
         </div>
-
-        {/* Sparkline */}
         {allMonthTx.length > 0 && (
           <div style={{ marginTop:"16px" }}>
             <SparkBars txList={txData} month={selMonth}/>
@@ -307,44 +308,20 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx }) {
       {/* ── Month tabs ── */}
       <div style={{ display:"flex", gap:"6px", overflowX:"auto", paddingBottom:"4px",
         marginBottom:"16px", scrollbarWidth:"none" }}>
-        {months.map(m => (
-          <button key={m} onClick={() => { setSelMonth(m); setFilterCat(""); }} style={{
-            padding:"7px 14px", borderRadius:"20px", border:"none", cursor:"pointer",
-            fontSize:"12px", fontWeight:700, whiteSpace:"nowrap", flexShrink:0,
-            background: selMonth === m ? T.accent : T.card,
-            color: selMonth === m ? T.bg : T.textMuted,
-          }}>{displayMonth(m)}</button>
-        ))}
+        {months.map(m => {
+          const hasTx = txData.some(t => t.date.slice(0,7) === m);
+          const isFuture = m > todayISO().slice(0,7);
+          return (
+            <button key={m} onClick={() => { setSelMonth(m); setFilterCat(""); }} style={{
+              padding:"7px 14px", borderRadius:"20px", border:"none", cursor:"pointer",
+              fontSize:"12px", fontWeight:700, whiteSpace:"nowrap", flexShrink:0,
+              background: selMonth === m ? T.accent : T.card,
+              color: selMonth === m ? T.bg : (isFuture && !hasTx) ? T.textMuted + "80" : T.textMuted,
+              opacity: isFuture && !hasTx ? 0.6 : 1,
+            }}>{displayMonth(m)}</button>
+          );
+        })}
       </div>
-
-      {/* ── Category breakdown ── */}
-      {catTotals.length > 0 && (
-        <div style={{ background:T.surface, borderRadius:"14px", border:`1px solid ${T.border}`,
-          padding:"16px", marginBottom:"16px" }}>
-          <div style={{ fontSize:"12px", fontWeight:700, color:T.textMuted, letterSpacing:"0.5px", marginBottom:"12px" }}>
-            BY CATEGORY
-          </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
-            {catTotals.map(c => (
-              <div key={c.id} style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:c.color, flexShrink:0 }}/>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"4px" }}>
-                    <span style={{ fontSize:"13px", fontWeight:600, color:T.text }}>{c.label}</span>
-                    <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", fontWeight:700, color:T.text }}>
-                      {fmtINR(c.value)}
-                      <span style={{ color:T.textMuted, fontWeight:400, fontSize:"11px" }}> {Math.round(c.value/monthTotal*100)}%</span>
-                    </span>
-                  </div>
-                  <div style={{ height:"4px", background:T.card, borderRadius:"2px", overflow:"hidden" }}>
-                    <div style={{ height:"100%", width:`${(c.value/monthTotal)*100}%`, background:c.color, borderRadius:"2px" }}/>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── Filter chips ── */}
       {catTotals.length > 0 && (
@@ -386,13 +363,15 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx }) {
                   <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"13px",
                     color:T.textMuted, fontWeight:600 }}>{fmtINR(dayTotal)}</div>
                 </div>
-                {txns.map((tx, i) => {
+                {txns.map(tx => {
                   const cat = catById[tx.categoryId];
                   return (
-                    <div key={tx.id} style={{
-                      padding:"14px 16px", display:"flex", alignItems:"center", gap:"12px",
-                      borderTop:`1px solid ${T.border}`,
-                    }}>
+                    <div key={tx.id}
+                      onClick={() => setSheet(tx)}
+                      style={{
+                        padding:"14px 16px", display:"flex", alignItems:"center", gap:"12px",
+                        borderTop:`1px solid ${T.border}`, cursor:"pointer",
+                      }}>
                       <div style={{ width:"36px", height:"36px", borderRadius:"10px", flexShrink:0,
                         background:(cat?.color || T.textMuted) + "20",
                         display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -403,16 +382,17 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx }) {
                           whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                           {tx.note || cat?.name || tx.categoryId}
                         </div>
-                        <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"2px", display:"flex", alignItems:"center", gap:"6px" }}>
+                        <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"2px" }}>
                           <span style={{ color:cat?.color || T.textMuted, fontWeight:600 }}>{cat?.name || tx.categoryId}</span>
-                          {tx.person && (
-                            <span style={{ color:tx.person==="Selva" ? T.selva : T.akshaya, fontWeight:600 }}>· {tx.person}</span>
-                          )}
                         </div>
                       </div>
                       <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"15px",
                         fontWeight:800, color:T.text, flexShrink:0 }}>{fmtINR(tx.amount)}</div>
-                      <button onClick={() => { if (window.confirm("Remove this transaction?")) onDeleteTx(tx.id); }}
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (window.confirm("Remove this transaction?")) onDeleteTx(tx.id);
+                        }}
                         style={{ background:"none", border:"none", color:T.textMuted, cursor:"pointer",
                           fontSize:"18px", lineHeight:1, padding:"4px 6px", opacity:0.5, flexShrink:0 }}>×</button>
                     </div>
@@ -424,8 +404,37 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx }) {
         </div>
       )}
 
-      {/* ── FAB: Add transaction ── */}
-      <button onClick={() => setShowForm(true)} style={{
+      {/* ── Category breakdown ── */}
+      {catTotals.length > 0 && (
+        <div style={{ background:T.surface, borderRadius:"14px", border:`1px solid ${T.border}`,
+          padding:"16px", marginTop:"16px" }}>
+          <div style={{ fontSize:"12px", fontWeight:700, color:T.textMuted, letterSpacing:"0.5px", marginBottom:"12px" }}>
+            BY CATEGORY
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
+            {catTotals.map(c => (
+              <div key={c.id} style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:c.color, flexShrink:0 }}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"4px" }}>
+                    <span style={{ fontSize:"13px", fontWeight:600, color:T.text }}>{c.label}</span>
+                    <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", fontWeight:700, color:T.text }}>
+                      {fmtINR(c.value)}
+                      <span style={{ color:T.textMuted, fontWeight:400, fontSize:"11px" }}> {Math.round(c.value/monthTotal*100)}%</span>
+                    </span>
+                  </div>
+                  <div style={{ height:"4px", background:T.card, borderRadius:"2px", overflow:"hidden" }}>
+                    <div style={{ height:"100%", width:`${(c.value/monthTotal)*100}%`, background:c.color, borderRadius:"2px" }}/>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── FAB ── */}
+      <button onClick={() => setSheet("add")} style={{
         position:"fixed", bottom:"80px", right:"20px", zIndex:50,
         width:"56px", height:"56px", borderRadius:"50%",
         background:T.accent, border:"none", cursor:"pointer",
@@ -434,9 +443,14 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx }) {
         display:"flex", alignItems:"center", justifyContent:"center",
       }}>+</button>
 
-      {/* ── Bottom sheet form ── */}
-      {showForm && (
-        <AddSheet categories={categories} onAdd={onAddTx} onClose={() => setShowForm(false)}/>
+      {/* ── Add/Edit sheet ── */}
+      {sheet && (
+        <TxSheet
+          categories={categories}
+          initial={typeof sheet === "object" ? sheet : null}
+          onSave={handleSave}
+          onClose={() => setSheet(null)}
+        />
       )}
     </div>
   );
