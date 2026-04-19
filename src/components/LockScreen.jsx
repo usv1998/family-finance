@@ -48,13 +48,15 @@ export default function LockScreen({ userEmail, onUnlock, onSignOut }) {
     }
   };
 
-  // ── enroll then authenticate (first time) ─────────────────────────────────
+  // ── enroll (first time) ──────────────────────────────────────────────────
+  // No second authenticateBiometric() call: Chrome Android loses the gesture
+  // context across two consecutive WebAuthn calls, causing NotAllowedError.
+  // The create() gesture IS proof-of-presence, so unlock immediately after.
   const doSetup = async () => {
     setPhase("enrolling");
     setErrMsg("");
     try {
       await enrollBiometric(userEmail || "user@duddukaasu");
-      await authenticateBiometric();
       onUnlock();
     } catch (e) {
       setPhase("setup");
