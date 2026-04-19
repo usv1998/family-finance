@@ -54,7 +54,10 @@ export function getCurrentValueINR(holding, priceMap, usdinr = 85) {
       return p != null ? holding.quantity * p * usdinr : null;
     }
     case "in_stock": {
-      const p = priceMap?.[holding.symbol];
+      // Stored without suffix; price map keyed with .NS appended for Yahoo
+      const key = holding.symbol && !/\.(NS|BO)$/i.test(holding.symbol)
+        ? holding.symbol + ".NS" : holding.symbol;
+      const p = priceMap?.[key] ?? priceMap?.[holding.symbol];
       return p != null ? holding.quantity * p : null;
     }
     case "mf": {
@@ -88,11 +91,17 @@ export function getGainINR(holding, currentValue) {
 
 // Fetch prices for all holdings in one parallel batch.
 // Returns priceMap keyed by symbol (stocks) or schemeCode (MFs).
+// Indian stocks are stored without suffix; Yahoo requires .NS for NSE.
 export async function fetchAllPrices(holdings) {
   const stockSymbols = [...new Set(
     holdings
       .filter(h => h.type === "us_stock" || h.type === "in_stock")
-      .map(h => h.symbol).filter(Boolean)
+      .map(h => {
+        if (h.type === "in_stock" && h.symbol && !/\.(NS|BO)$/i.test(h.symbol)) {
+          return h.symbol + ".NS";
+        }
+        return h.symbol;
+      }).filter(Boolean)
   )];
   const mfCodes = [...new Set(
     holdings.filter(h => h.type === "mf").map(h => h.schemeCode).filter(Boolean)
