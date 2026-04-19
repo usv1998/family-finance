@@ -462,7 +462,7 @@ export default function PortfolioTab({
   onReplaceStockLots, onReplaceMFLots,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
-  const [view,          setView]          = useState("overview");
+  const [view,          setView]          = useState("holdings");
   const [showAddForm,   setShowAddForm]   = useState(false);
   const [showCasImport,     setShowCasImport]     = useState(false);
   const [showTradebookImport, setShowTradebookImport] = useState(false);
