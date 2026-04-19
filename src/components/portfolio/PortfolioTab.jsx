@@ -242,6 +242,12 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
           if (!typeMap) return null;
           const catHoldings = Object.values(typeMap).flat();
           const catValue    = catHoldings.reduce((s, h) => s + (h.currentValue || 0), 0);
+          const catCost     = catHoldings.reduce((s, h) => s + (h.costBasisINR || h.principal || h.balance || 0), 0);
+          const catGain     = catValue - catCost;
+          const catGainPct  = catCost > 0 ? catGain / catCost * 100 : null;
+          const catXirr     = portfolioXIRR(catHoldings);
+          const catGc       = catGain >= 0 ? T.accent : T.red;
+          const catCol      = CAT_COLORS[cat] || T.text;
           const catKey      = `cat-${cat}`;
           const catOpen     = expanded[catKey] !== false;
 
@@ -249,21 +255,60 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
             <div key={cat} style={{ background:T.surface, borderRadius:"12px",
               border:`1px solid ${T.border}`, overflow:"hidden" }}>
 
-              {/* Category header */}
+              {/* Category header — rich roll-up */}
               <div onClick={() => toggle(catKey)}
-                style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                  padding:"14px 18px", cursor:"pointer", userSelect:"none",
+                style={{ padding:"16px 18px", cursor:"pointer", userSelect:"none",
                   borderBottom: catOpen ? `1px solid ${T.border}` : "none" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                  <span style={{ fontSize:"14px", fontWeight:700, color:CAT_COLORS[cat]||T.text }}>{cat}</span>
-                  <span style={{ fontSize:"11px", color:T.textMuted }}>
-                    {catHoldings.length} holding{catHoldings.length!==1?"s":""}
-                  </span>
+
+                {/* Top row: label + current value + chevron */}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                    <span style={{ fontSize:"14px", fontWeight:800, color:catCol }}>{cat}</span>
+                    <span style={{ fontSize:"11px", color:T.textMuted }}>
+                      {catHoldings.length} holding{catHoldings.length!==1?"s":""}
+                    </span>
+                    {catXirr !== null && (
+                      <span style={{ fontSize:"10px", fontWeight:700, padding:"2px 7px", borderRadius:"5px",
+                        color:catXirr>=0?T.accent:T.red, background:`${catXirr>=0?T.accent:T.red}18` }}>
+                        XIRR {fmtXIRR(catXirr)}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:"14px" }}>
+                    <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"18px",
+                      fontWeight:800, color:T.text }}>{fmtL(catValue)}</span>
+                    <span style={{ color:T.textMuted, fontSize:"13px" }}>{catOpen?"▲":"▼"}</span>
+                  </div>
                 </div>
-                <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
-                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"15px",
-                    fontWeight:700, color:T.text }}>{fmtL(catValue)}</span>
-                  <span style={{ color:T.textMuted, fontSize:"13px" }}>{catOpen?"▲":"▼"}</span>
+
+                {/* Stats row: invested · gain · gain% */}
+                <div style={{ display:"flex", gap:"24px", flexWrap:"wrap", alignItems:"center" }}>
+                  <div>
+                    <div style={{ fontSize:"10px", color:T.textMuted, marginBottom:"2px" }}>Invested</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px",
+                      fontWeight:600, color:T.textDim }}>{fmtL(catCost)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:"10px", color:T.textMuted, marginBottom:"2px" }}>Abs. Gain</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px",
+                      fontWeight:700, color:catGc }}>
+                      {catGain>=0?"+":""}{fmtL(Math.abs(catGain))}
+                      {catGainPct!==null && (
+                        <span style={{ fontSize:"11px", marginLeft:"5px", opacity:0.85 }}>
+                          ({catGainPct>=0?"+":""}{catGainPct.toFixed(1)}%)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Gain progress bar */}
+                  {catCost > 0 && (
+                    <div style={{ flex:1, minWidth:"80px" }}>
+                      <div style={{ height:"4px", borderRadius:"2px", background:T.border, overflow:"hidden" }}>
+                        <div style={{ width:`${Math.min(100, Math.abs(catGainPct||0) * 2)}%`,
+                          height:"100%", borderRadius:"2px", background:catGc, transition:"width 0.5s" }}/>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -271,7 +316,11 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
                 const typeKey  = `type-${cat}-${type}`;
                 const typeOpen = expanded[typeKey] !== false;
                 const typeVal  = holdings.reduce((s, h) => s + (h.currentValue || 0), 0);
+                const typeCost = holdings.reduce((s, h) => s + (h.costBasisINR || h.principal || h.balance || 0), 0);
+                const typeGain = typeVal - typeCost;
+                const typeGainPct = typeCost > 0 ? typeGain / typeCost * 100 : null;
                 const typeXirr = portfolioXIRR(holdings);
+                const typeGc   = typeGain >= 0 ? T.accent : T.red;
 
                 // Group by stock symbol / name
                 const byStock = {};
@@ -286,19 +335,29 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
                     <div onClick={() => toggle(typeKey)}
                       style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
                         padding:"9px 18px 9px 28px", cursor:"pointer", userSelect:"none",
-                        background:T.card, borderBottom:`1px solid ${T.border}33` }}>
+                        background:T.card, borderBottom:`1px solid ${T.border}33`, flexWrap:"wrap", gap:"6px" }}>
                       <span style={{ fontSize:"12px", fontWeight:600, color:T.textDim }}>
                         {TYPE_LABELS[type] || type}
                       </span>
-                      <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:"12px", marginLeft:"auto" }}>
+                        {typeCost > 0 && (
+                          <span style={{ fontSize:"10px", color:T.textMuted }}>
+                            {fmtL(typeCost)} invested
+                          </span>
+                        )}
+                        {typeGainPct !== null && (
+                          <span style={{ fontSize:"10px", fontWeight:700, color:typeGc }}>
+                            {typeGain>=0?"+":""}{typeGainPct.toFixed(1)}%
+                          </span>
+                        )}
                         {typeXirr !== null && (
-                          <span style={{ fontSize:"10px", fontWeight:700, color:typeXirr>=0?T.accent:T.red }}>
+                          <span style={{ fontSize:"10px", fontWeight:700, color:typeXirr>=0?T.accent:T.red,
+                            padding:"1px 6px", borderRadius:"4px", background:`${typeXirr>=0?T.accent:T.red}15` }}>
                             XIRR {fmtXIRR(typeXirr)}
                           </span>
                         )}
-                        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", color:T.textDim }}>
-                          {fmtL(typeVal)}
-                        </span>
+                        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"12px",
+                          fontWeight:700, color:T.text }}>{fmtL(typeVal)}</span>
                         <span style={{ color:T.textMuted, fontSize:"12px" }}>{typeOpen?"▲":"▼"}</span>
                       </div>
                     </div>
