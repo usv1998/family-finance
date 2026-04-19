@@ -208,20 +208,33 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
 }
 
 function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateFundCategory, onDeleteDerived }) {
-  const [expanded, setExpanded] = useState({});
-  const [modal,    setModal]    = useState(null);
+  const [expanded,  setExpanded]  = useState({});
+  const [modalSym,  setModalSym]  = useState(null); // track by symbol key, not snapshot
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
+
+  // Derive live holdings for the open modal from current grouped data
+  const allHoldings = Object.values(grouped).flatMap(typeMap => Object.values(typeMap).flat());
+  const modalHoldings = modalSym
+    ? allHoldings.filter(h => (h.symbol || h.name || h.id) === modalSym)
+    : [];
+  // Auto-close modal when all lots removed
+  useEffect(() => { if (modalSym && modalHoldings.length === 0) setModalSym(null); }, [modalHoldings.length]);
+
+  const modal = modalSym ? { label: `${modalSym} · ${modalHoldings.length} lot${modalHoldings.length !== 1 ? "s" : ""}`, holdings: modalHoldings } : null;
+
+  const handleDelete = (id) => {
+    onDelete(id);
+  };
 
   const handleDeleteDerived = (h) => {
     onDeleteDerived(h);
-    setModal(null);
   };
 
   return (
     <>
       <StockModal modal={modal} priceMap={priceMap} usdinr={usdinr}
-        onDelete={onDelete} onUpdateBalance={onUpdateBalance}
-        onDeleteDerived={handleDeleteDerived} onClose={()=>setModal(null)}/>
+        onDelete={handleDelete} onUpdateBalance={onUpdateBalance}
+        onDeleteDerived={handleDeleteDerived} onClose={()=>setModalSym(null)}/>
 
       <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
         {["Equity","Debt","Gold"].map(cat => {
@@ -302,7 +315,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
                           const gc        = gain >= 0 ? T.accent : T.red;
                           return (
                             <div key={sym}
-                              onClick={()=>setModal({ label:`${sym} · ${lots.length} lot${lots.length!==1?"s":""}`, holdings:lots })}
+                              onClick={()=>setModalSym(sym)}
                               onMouseEnter={e=>e.currentTarget.style.borderColor=T.accent+"88"}
                               onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}
                               style={{ padding:"14px 16px", background:T.bg, borderRadius:"10px",
