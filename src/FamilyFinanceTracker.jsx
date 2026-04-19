@@ -502,7 +502,6 @@ export default function FamilyFinanceTracker() {
         {activeTab==="daily"&&(
           <DailyExpensesTab
             txData={txData}
-            expensesData={expensesData}
             onAddTx={addTx}
             onDeleteTx={deleteTx}
           />
