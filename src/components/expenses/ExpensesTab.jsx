@@ -2,12 +2,12 @@ import { useState } from "react";
 import { T } from "../../lib/theme";
 import { fmtINR, genId, getCurrentMonthIdx } from "../../lib/formatters";
 import { MONTHS, MONTH_FULL } from "../../lib/constants";
-import { SEED_DATA } from "../../lib/seed";
+import { DEFAULT_CATEGORIES } from "./DailyExpensesTab";
 import { downloadCSV } from "../../lib/csvExport";
 
 export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   const inv       = expensesData?.[fy] || {};
-  const categories= inv.categories || SEED_DATA.expensesData["FY2026-27"].categories;
+  const categories= inv.categories || DEFAULT_CATEGORIES.map(c => ({ ...c, budget: 0 }));
   const actuals   = inv.actuals    || {};
 
   const [selMonth, setSelMonth] = useState(getCurrentMonthIdx);
@@ -19,7 +19,7 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   const [budgetDraft, setBudgetDraft] = useState({});
 
   const getActual = (mi, catId) => Number(actuals?.[mi]?.[catId]) || 0;
-  const monthTotal = (mi) => categories.reduce((s,c)=>s+getActual(mi,c.id),0);
+  const monthTotal = (mi) => Object.values(actuals?.[mi] || {}).reduce((s,v)=>s+Number(v),0);
   const monthBudget = () => categories.reduce((s,c)=>s+Number(c.budget||0),0);
 
   // YTD: only count months that have any actual entered

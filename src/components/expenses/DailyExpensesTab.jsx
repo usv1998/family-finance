@@ -305,22 +305,29 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx, onEditTx
         )}
       </div>
 
-      {/* ── Month tabs ── */}
-      <div style={{ display:"flex", gap:"6px", overflowX:"auto", paddingBottom:"4px",
-        marginBottom:"16px", scrollbarWidth:"none" }}>
-        {months.map(m => {
-          const hasTx = txData.some(t => t.date.slice(0,7) === m);
-          const isFuture = m > todayISO().slice(0,7);
-          return (
-            <button key={m} onClick={() => { setSelMonth(m); setFilterCat(""); }} style={{
-              padding:"7px 14px", borderRadius:"20px", border:"none", cursor:"pointer",
-              fontSize:"12px", fontWeight:700, whiteSpace:"nowrap", flexShrink:0,
-              background: selMonth === m ? T.accent : T.card,
-              color: selMonth === m ? T.bg : (isFuture && !hasTx) ? T.textMuted + "80" : T.textMuted,
-              opacity: isFuture && !hasTx ? 0.6 : 1,
-            }}>{displayMonth(m)}</button>
-          );
-        })}
+      {/* ── Month selector ── */}
+      <div style={{ marginBottom:"16px" }}>
+        <select
+          value={selMonth}
+          onChange={e => { setSelMonth(e.target.value); setFilterCat(""); }}
+          style={{
+            width:"100%", padding:"10px 14px", borderRadius:"10px",
+            background:T.card, border:`1px solid ${T.border}`,
+            color:T.text, fontSize:"14px", fontWeight:700,
+            outline:"none", cursor:"pointer", appearance:"none",
+            fontFamily:"'DM Sans',-apple-system,sans-serif",
+          }}
+        >
+          {months.map(m => {
+            const hasTx = txData.some(t => t.date.slice(0,7) === m);
+            const isFuture = m > todayISO().slice(0,7);
+            return (
+              <option key={m} value={m}>
+                {displayMonth(m)}{hasTx ? "" : isFuture ? " (upcoming)" : " (no data)"}
+              </option>
+            );
+          })}
+        </select>
       </div>
 
       {/* ── Filter chips ── */}
