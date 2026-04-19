@@ -454,7 +454,7 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
                                   {s.lots.length} lot{s.lots.length!==1?"s":""}
                                 </span>
                                 {existing.length > 0 && (
-                                  <span style={{ fontSize:"10px", color:T.amber, fontWeight:600 }}>⟳ replaces {existing.length}</span>
+                                  <span style={{ fontSize:"10px", color:T.amber, fontWeight:600 }}>+ merges with {existing.length} existing</span>
                                 )}
                               </div>
                               <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"2px" }}>
@@ -528,7 +528,7 @@ export default function TradebookImportModal({ holdingsData, onReplaceStockLots,
                                   {f.lots.length} SIP{f.lots.length!==1?"s":""}
                                 </span>
                                 {existing.length > 0 && (
-                                  <span style={{ fontSize:"10px", color:T.amber, fontWeight:600 }}>⟳ replaces {existing.length}</span>
+                                  <span style={{ fontSize:"10px", color:T.amber, fontWeight:600 }}>+ merges with {existing.length} existing</span>
                                 )}
                               </div>
                               <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"2px" }}>
