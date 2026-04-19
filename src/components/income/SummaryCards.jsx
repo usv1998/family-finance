@@ -18,7 +18,6 @@ export default function SummaryCards({ incomeData, rsuData, investmentsData, fy 
   const cards = [
     {label:"Total Take-Home",  value:fmtINR(totalTH),                                color:T.accent},
     {label:"RSU Net Shares",   value:`${totalRSUSh} shares`, sub:fmtINR(totalRSUINR), color:T.purple},
-    {label:"Total EPF Corpus", value:fmtINR(totalEPF),                               color:T.blue},
     {label:"ESPP Net Shares",  value:`${totalESPPSh} shares`, sub:fmtINR(totalESPPINR), color:T.teal},
     {label:"Grand Total",      value:fmtINR(grand),                                  color:T.white, grand:true},
   ];

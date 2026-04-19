@@ -4,7 +4,7 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
 import { T } from "../../lib/theme";
-import { fmtINR, getEsspINR } from "../../lib/formatters";
+import { fmtINR, getEsspINR, getCurrentFY } from "../../lib/formatters";
 import { PERSONS, MONTHS } from "../../lib/constants";
 
 // ── data helpers ──────────────────────────────────────────────────────────────
@@ -77,11 +77,12 @@ function CustomTooltip({ active, payload, label }) {
 
 export default function SavingsRateChart({ incomeData, rsuData, expensesData }) {
   const data = useMemo(() => {
+    const currFY = getCurrentFY();
     const allFYs = [...new Set([
       ...Object.keys(incomeData   || {}),
       ...Object.keys(rsuData      || {}),
       ...Object.keys(expensesData || {}),
-    ])].filter(k => k.startsWith("FY")).sort();
+    ])].filter(k => k.startsWith("FY") && k >= currFY).sort();
 
     return allFYs.map(fy => {
       const income   = computeFYIncome(fy, incomeData, rsuData);

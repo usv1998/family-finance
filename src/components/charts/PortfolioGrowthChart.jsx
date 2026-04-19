@@ -16,11 +16,30 @@ const BENCHMARKS = [
   { key:"gold",  label:"Gold",           symbol:"GOLDBEES.NS", color:"#EAB308", type:"stock" },
 ];
 
+const RANGES = [
+  { label:"1M",  months:1  },
+  { label:"3M",  months:3  },
+  { label:"6M",  months:6  },
+  { label:"YTD", ytd:true  },
+  { label:"1Y",  months:12 },
+  { label:"2Y",  months:24 },
+  { label:"3Y",  months:36 },
+  { label:"5Y",  months:60 },
+  { label:"All"             },
+];
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function nowYM() {
   const n = new Date();
   return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
+}
+
+function subtractMonths(ym, n) {
+  let [y, m] = ym.split("-").map(Number);
+  m -= n;
+  while (m <= 0) { m += 12; y--; }
+  return `${y}-${String(m).padStart(2,"0")}`;
 }
 
 function monthRange(startYM, endYM) {
@@ -74,6 +93,7 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
   const [usdinrHistory,      setUsdinrHistory]      = useState({});
   const [bmHistories,        setBmHistories]        = useState({});
   const [fetchError,         setFetchError]         = useState(null);
+  const [range,              setRange]              = useState("All");
 
   // Unique symbols needed from portfolio
   const symbols = useMemo(() => {
@@ -230,6 +250,19 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
     }));
   }, [portfolioHistories, usdinrHistory, bmHistories, equityHoldings, liveData]);
 
+  // ── Slice full history to the selected time range ───────────────────────────
+  const visibleData = useMemo(() => {
+    if (!chartData || chartData.length === 0) return chartData;
+    const cfg = RANGES.find(r => r.label === range);
+    if (!cfg || (!cfg.months && !cfg.ytd)) return chartData; // "All"
+    const endYM = nowYM();
+    const startYM = cfg.ytd
+      ? `${new Date().getFullYear()}-01`
+      : subtractMonths(endYM, cfg.months);
+    const sliced = chartData.filter(d => d.ym >= startYM);
+    return sliced.length >= 2 ? sliced : chartData; // fall back to All if too short
+  }, [chartData, range]);
+
   // ── Render ──────────────────────────────────────────────────────────────────
   const card = {
     background:T.card, borderRadius:"14px",
@@ -265,15 +298,15 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
     );
   }
 
-  // Summary stats
-  const portPoints = chartData.filter(d => d.portfolio != null);
-  const firstVal   = portPoints[0]?.portfolio;
-  const lastVal    = portPoints[portPoints.length - 1]?.portfolio;
+  // Summary stats — computed from visible window
+  const portPoints  = visibleData.filter(d => d.portfolio != null);
+  const firstVal    = portPoints[0]?.portfolio;
+  const lastVal     = portPoints[portPoints.length - 1]?.portfolio;
   const totalRetPct = firstVal && lastVal
     ? ((lastVal / firstVal - 1) * 100).toFixed(1)
     : null;
 
-  const tickEvery = Math.max(1, Math.floor(chartData.length / 8));
+  const tickEvery = Math.max(1, Math.floor(visibleData.length / 8));
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
@@ -325,8 +358,24 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
         )}
       </div>
 
+      {/* Time range selector */}
+      <div style={{ display:"flex", gap:"4px", flexWrap:"wrap", marginBottom:"14px" }}>
+        {RANGES.map(r => {
+          const active = range === r.label;
+          return (
+            <button key={r.label} onClick={() => setRange(r.label)} style={{
+              padding:"4px 10px", borderRadius:"6px", border:"none", cursor:"pointer",
+              fontSize:"11px", fontWeight:700,
+              background: active ? T.accent : T.surface,
+              color:       active ? T.bg     : T.textMuted,
+              transition:"background 0.15s",
+            }}>{r.label}</button>
+          );
+        })}
+      </div>
+
       <ResponsiveContainer width="100%" height={260}>
-        <LineChart data={chartData} margin={{ top:4, right:6, left:0, bottom:0 }}>
+        <LineChart data={visibleData} margin={{ top:4, right:6, left:0, bottom:0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false}/>
           <XAxis dataKey="label" tick={{ fill:T.textMuted, fontSize:10 }}
             axisLine={false} tickLine={false} interval={tickEvery - 1}/>

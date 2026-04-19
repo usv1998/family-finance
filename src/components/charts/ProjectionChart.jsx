@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend,
 } from "recharts";
 import { T } from "../../lib/theme";
-import { fmtINR, getEsspINR } from "../../lib/formatters";
+import { fmtINR, getEsspINR, getCurrentFY } from "../../lib/formatters";
 import { PERSONS } from "../../lib/constants";
 import { generateVestSchedule } from "../../lib/grantUtils";
 
@@ -138,10 +138,11 @@ export default function ProjectionChart({ incomeData, rsuData, rsuGrants, liveDa
 
   const data = useMemo(() => {
     // ── Actuals ──
+    const currFY = getCurrentFY();
     const actualFYs = [...new Set([
       ...Object.keys(incomeData || {}),
       ...Object.keys(rsuData    || {}),
-    ])].filter(k => k.startsWith("FY")).sort();
+    ])].filter(k => k.startsWith("FY") && k >= currFY).sort();
 
     const actuals = actualFYs.map(fy => {
       const c = computeActual(fy, incomeData, rsuData);

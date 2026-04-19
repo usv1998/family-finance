@@ -5,7 +5,7 @@ import {
   Cell,
 } from "recharts";
 import { T } from "../../lib/theme";
-import { fmtINR, getEsspINR } from "../../lib/formatters";
+import { fmtINR, getEsspINR, getCurrentFY } from "../../lib/formatters";
 import { PERSONS } from "../../lib/constants";
 
 // ── data helpers ──────────────────────────────────────────────────────────────
@@ -110,10 +110,11 @@ export default function IncomeGrowthChart({ incomeData, rsuData }) {
   });
 
   const data = useMemo(() => {
+    const currFY = getCurrentFY();
     const allFYs = [...new Set([
       ...Object.keys(incomeData || {}),
       ...Object.keys(rsuData   || {}),
-    ])].filter(k => k.startsWith("FY")).sort();
+    ])].filter(k => k.startsWith("FY") && k >= currFY).sort();
     return allFYs.map(fy => computeFYData(fy, incomeData, rsuData));
   }, [incomeData, rsuData]);
 

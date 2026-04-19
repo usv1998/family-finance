@@ -335,42 +335,8 @@ function OverviewView({ enriched, totalNW }) {
         </SectionCard>
       </div>
 
-      {/* ── 3. Person split + category performance ────────────────────────── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:"16px" }}>
-
-        {/* Person donut */}
-        {personDonut.length >= 1 && (
-          <SectionCard title="Portfolio by Member">
-            <ResponsiveContainer width="100%" height={170}>
-              <PieChart>
-                <Pie data={personDonut} cx="50%" cy="50%" innerRadius={52} outerRadius={75}
-                  paddingAngle={4} dataKey="value" strokeWidth={0}>
-                  {personDonut.map((e, i) => <Cell key={i} fill={e.color}/>)}
-                </Pie>
-                <Tooltip content={(props) => <AllocTip {...props} totalNW={totalNW}/>}/>
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ display:"flex", gap:"12px", justifyContent:"center",
-              flexWrap:"wrap", marginTop:"8px" }}>
-              {personDonut.map(d => (
-                <div key={d.name} style={{ textAlign:"center", background:T.surface,
-                  borderRadius:"10px", padding:"8px 16px", border:`1px solid ${d.color}33` }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:"5px",
-                    marginBottom:"4px", justifyContent:"center" }}>
-                    <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:d.color }}/>
-                    <span style={{ fontSize:"11px", fontWeight:700, color:d.color }}>{d.name}</span>
-                  </div>
-                  <div style={{ fontFamily:"monospace", fontSize:"15px", fontWeight:800, color:T.text }}>
-                    {fmtL(d.value)}
-                  </div>
-                  <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"2px" }}>
-                    {(d.value/totalNW*100).toFixed(1)}%
-                  </div>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-        )}
+      {/* ── 3. Category performance ──────────────────────────────────────── */}
+      <div>
 
         {/* Category performance cards */}
         <SectionCard title="Category Performance">
@@ -718,7 +684,7 @@ export default function PortfolioTab({
   onMergeStockLots, onMergeMFLots,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
-  const [view,          setView]          = useState("holdings");
+  const [view,          setView]          = useState("overview");
   const [showAddForm,   setShowAddForm]   = useState(false);
   const [showCasImport,     setShowCasImport]     = useState(false);
   const [showTradebookImport, setShowTradebookImport] = useState(false);
