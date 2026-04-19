@@ -81,8 +81,10 @@ export function portfolioXIRR(enrichedHoldings) {
   const today = new Date();
 
   for (const h of enrichedHoldings) {
-    if (!h.acquisitionDate || !(h.costBasisINR > 0)) continue;
-    flows.push({ amount: -h.costBasisINR, date: new Date(h.acquisitionDate) });
+    const cost = h.costBasisINR || h.principal || 0;
+    const date = h.acquisitionDate || h.startDate;
+    if (!date || !(cost > 0)) continue;
+    flows.push({ amount: -cost, date: new Date(date) });
     totalValue += h.currentValue || 0;
   }
 

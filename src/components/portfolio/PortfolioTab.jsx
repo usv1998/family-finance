@@ -61,7 +61,7 @@ function OverviewView({ enriched, totalNW }) {
       const cat = h.category;
       if (!cats[cat]) cats[cat] = { value: 0, cost: 0, holdings: [] };
       cats[cat].value += h.currentValue || 0;
-      cats[cat].cost  += h.costBasisINR || h.balance || 0;
+      cats[cat].cost  += h.costBasisINR || h.principal || h.balance || 0;
       cats[cat].holdings.push(h);
     }
     for (const cat of Object.keys(cats)) {
@@ -79,7 +79,7 @@ function OverviewView({ enriched, totalNW }) {
   const portfolioRate = useMemo(() => portfolioXIRR(enriched), [enriched]);
 
   const { totalGain, gainPct } = useMemo(() => {
-    const totalCost = enriched.reduce((s, h) => s + (h.costBasisINR || h.balance || 0), 0);
+    const totalCost = enriched.reduce((s, h) => s + (h.costBasisINR || h.principal || h.balance || 0), 0);
     const gain = totalNW - totalCost;
     return { totalGain: gain, gainPct: totalCost > 0 ? gain / totalCost * 100 : null };
   }, [enriched, totalNW]);
@@ -293,7 +293,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
                       <div style={{ display:"flex", flexDirection:"column", gap:"8px", padding:"10px 14px" }}>
                         {Object.entries(byStock).map(([sym, lots]) => {
                           const totalQty  = lots.reduce((s,h)=>s+(Number(h.quantity)||0), 0);
-                          const totalCost = lots.reduce((s,h)=>s+(h.costBasisINR||h.balance||0), 0);
+                          const totalCost = lots.reduce((s,h)=>s+(h.costBasisINR||h.principal||h.balance||0), 0);
                           const totalVal  = lots.reduce((s,h)=>s+(h.currentValue||0), 0);
                           const gain      = totalVal - totalCost;
                           const gainPct   = totalCost > 0 ? gain/totalCost*100 : null;
