@@ -1,18 +1,16 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, AreaChart, Area, ReferenceLine,
+  XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import { T } from "../../lib/theme";
 import { getMonthlyHistory } from "../../lib/priceHistory";
 
 // ── Benchmarks ────────────────────────────────────────────────────────────────
-// Gold:    GOLDBEES.NS  — Gold BeES ETF, INR-denominated, tracks MCX gold
-// Nifty:   ^NSEI        — Nifty 50 index points (INR)
-// S&P 500: ^GSPC (USD) × USDINR=X — converted to INR
 const BENCHMARKS = [
-  { key:"nifty", label:"Nifty 50",      symbol:"^NSEI",      color:T.blue,    type:"stock" },
-  { key:"sp500", label:"S&P 500 (₹)",   symbol:"^GSPC",      color:T.purple,  type:"stock" },
+  { key:"nifty", label:"Nifty 50",      symbol:"^NSEI",       color:T.blue,    type:"stock" },
+  { key:"sp500", label:"S&P 500 (₹)",   symbol:"^GSPC",       color:T.purple,  type:"stock" },
   { key:"gold",  label:"Gold",           symbol:"GOLDBEES.NS", color:"#EAB308", type:"stock" },
 ];
 
@@ -21,6 +19,14 @@ const RANGES = [
   { label:"3M",  months:3  },
   { label:"6M",  months:6  },
   { label:"YTD", ytd:true  },
+  { label:"1Y",  months:12 },
+  { label:"2Y",  months:24 },
+  { label:"3Y",  months:36 },
+  { label:"5Y",  months:60 },
+  { label:"All"             },
+];
+
+const DD_RANGES = [
   { label:"1Y",  months:12 },
   { label:"2Y",  months:24 },
   { label:"3Y",  months:36 },
@@ -61,7 +67,6 @@ function holdingYM(h) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 }
 
-// Nearest available price for a month — look back up to 3 months for gaps
 function nearestPrice(map, ym) {
   if (map[ym] != null) return map[ym];
   let [y, m] = ym.split("-").map(Number);
@@ -86,16 +91,153 @@ function fmtMonthLabel(ym) {
     + "'" + String(y).slice(2);
 }
 
+// Compute drawdown series from a portfolio value array.
+// Peak resets to the first value of the window — so stats are window-relative.
+function computeDrawdown(points) {
+  let peak = -Infinity;
+  return points.map(d => {
+    if (d.portfolio == null) return { ...d, drawdown: null };
+    if (d.portfolio > peak) peak = d.portfolio;
+    const dd = peak > 0 ? ((d.portfolio - peak) / peak) * 100 : 0;
+    return { ...d, drawdown: parseFloat(dd.toFixed(2)) };
+  }).filter(d => d.drawdown != null);
+}
+
+// ── Drawdown tooltip ──────────────────────────────────────────────────────────
+
+function DDTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const dd = payload[0]?.value;
+  if (dd == null) return null;
+  return (
+    <div style={{ background:T.surface, border:`1px solid ${T.border}`,
+      borderRadius:"10px", padding:"10px 14px", fontSize:"12px" }}>
+      <div style={{ fontWeight:700, color:T.text, marginBottom:"6px" }}>{label}</div>
+      <div style={{ fontFamily:"monospace", fontWeight:800,
+        color: dd < -0.01 ? T.red : T.accent, fontSize:"14px" }}>
+        {Math.abs(dd) < 0.01 ? "At Peak" : `${dd.toFixed(2)}%`}
+      </div>
+    </div>
+  );
+}
+
+// ── Drawdown section ──────────────────────────────────────────────────────────
+
+function DrawdownSection({ chartData }) {
+  const [ddRange, setDdRange] = useState("All");
+
+  const ddPoints = useMemo(() => {
+    if (!chartData || chartData.length < 2) return [];
+    const cfg = DD_RANGES.find(r => r.label === ddRange);
+    let base = chartData.filter(d => d.portfolio != null);
+    if (cfg?.months) {
+      const cutoff = subtractMonths(nowYM(), cfg.months);
+      const sliced = base.filter(d => d.ym >= cutoff);
+      if (sliced.length >= 2) base = sliced;
+    }
+    return computeDrawdown(base);
+  }, [chartData, ddRange]);
+
+  // Stats
+  const maxDD = ddPoints.length ? Math.min(...ddPoints.map(d => d.drawdown)) : 0;
+  const currentDD = ddPoints[ddPoints.length - 1]?.drawdown ?? 0;
+
+  let maxUnderwater = 0, curStreak = 0;
+  for (const d of ddPoints) {
+    if (d.drawdown < -0.01) { curStreak++; maxUnderwater = Math.max(maxUnderwater, curStreak); }
+    else curStreak = 0;
+  }
+
+  const ddTickEvery = Math.max(1, Math.floor(ddPoints.length / 8));
+
+  const statCard = (label, value, col) => (
+    <div style={{ background:T.surface, borderRadius:"10px",
+      padding:"8px 14px", border:`1px solid ${T.border}`, textAlign:"center", flexShrink:0 }}>
+      <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:600, marginBottom:"4px" }}>{label}</div>
+      <div style={{ fontFamily:"monospace", fontSize:"16px", fontWeight:800, color:col }}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ marginTop:"28px", paddingTop:"22px", borderTop:`1px solid ${T.border}` }}>
+
+      {/* Header + stats row */}
+      <div style={{ display:"flex", justifyContent:"space-between",
+        alignItems:"flex-start", flexWrap:"wrap", gap:"10px", marginBottom:"14px" }}>
+        <div>
+          <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700,
+            letterSpacing:"0.6px", textTransform:"uppercase", marginBottom:"4px" }}>
+            Portfolio Drawdown
+          </div>
+          <div style={{ fontSize:"11px", color:T.textMuted }}>
+            % decline from the rolling peak within selected window
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+          {statCard("Max Drawdown", maxDD < -0.01 ? `${maxDD.toFixed(1)}%` : "—", T.red)}
+          {statCard("Max Underwater", maxUnderwater > 0 ? `${maxUnderwater}m` : "—", T.amber)}
+          {statCard("Current", Math.abs(currentDD) < 0.01 ? "At Peak" : `${currentDD.toFixed(1)}%`,
+            Math.abs(currentDD) < 0.01 ? T.accent : T.red)}
+        </div>
+      </div>
+
+      {/* Range filter */}
+      <div style={{ display:"flex", gap:"4px", flexWrap:"wrap", marginBottom:"14px" }}>
+        {DD_RANGES.map(r => {
+          const active = ddRange === r.label;
+          return (
+            <button key={r.label} onClick={() => setDdRange(r.label)} style={{
+              padding:"4px 10px", borderRadius:"6px", border:"none", cursor:"pointer",
+              fontSize:"11px", fontWeight:700,
+              background: active ? T.red : T.surface,
+              color:       active ? "#fff" : T.textMuted,
+              transition:"background 0.15s",
+            }}>{r.label}</button>
+          );
+        })}
+      </div>
+
+      {/* Chart */}
+      {ddPoints.length >= 2 ? (
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={ddPoints} margin={{ top:4, right:6, left:0, bottom:0 }}>
+            <defs>
+              <linearGradient id="ddFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor={T.red} stopOpacity={0.35}/>
+                <stop offset="100%" stopColor={T.red} stopOpacity={0.03}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false}/>
+            <XAxis dataKey="label" tick={{ fill:T.textMuted, fontSize:10 }}
+              axisLine={false} tickLine={false} interval={ddTickEvery - 1}/>
+            <YAxis tickFormatter={v => `${v.toFixed(0)}%`}
+              tick={{ fill:T.textMuted, fontSize:10 }}
+              axisLine={false} tickLine={false} width={44} domain={["auto", 0]}/>
+            <Tooltip content={<DDTooltip/>}/>
+            <ReferenceLine y={0} stroke={T.border} strokeWidth={1}/>
+            <Area type="monotone" dataKey="drawdown" name="Drawdown"
+              stroke={T.red} strokeWidth={1.5} fill="url(#ddFill)"
+              dot={false} connectNulls/>
+          </AreaChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ textAlign:"center", padding:"40px", color:T.textMuted, fontSize:"13px" }}>
+          Not enough data for selected range.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
-  const [portfolioHistories, setPortfolioHistories] = useState(null); // null = loading
+  const [portfolioHistories, setPortfolioHistories] = useState(null);
   const [usdinrHistory,      setUsdinrHistory]      = useState({});
   const [bmHistories,        setBmHistories]        = useState({});
   const [fetchError,         setFetchError]         = useState(null);
   const [range,              setRange]              = useState("All");
 
-  // Unique symbols needed from portfolio
   const symbols = useMemo(() => {
     const m = new Map();
     for (const h of equityHoldings) {
@@ -149,29 +291,25 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
     })();
   }, [symKey]);
 
-  // ── Compute chart data ──────────────────────────────────────────────────────
+  // ── Full monthly series ───────────────────────────────────────────────────────
   const chartData = useMemo(() => {
     if (portfolioHistories === null || equityHoldings.length === 0) return null;
 
     const fallbackUSDINR = liveData?.USDINR || 85;
-    const endYM   = nowYM();
+    const endYM = nowYM();
 
-    // Earliest acquisition month across all equity holdings
     const acqMonths = equityHoldings.map(holdingYM).filter(Boolean).sort();
     if (acqMonths.length === 0) return [];
     const startYM = acqMonths[0];
     const months  = monthRange(startYM, endYM);
 
-    // ── Portfolio value per month ────────────────────────────────────────────
     const portVal = {};
     for (const ym of months) {
       let val = 0;
       for (const h of equityHoldings) {
         const acqYM = holdingYM(h);
-        if (!acqYM || acqYM > ym) continue; // not yet acquired
-
+        if (!acqYM || acqYM > ym) continue;
         const fx = nearestPrice(usdinrHistory, ym) || fallbackUSDINR;
-
         if (h.type === "us_stock") {
           const p = nearestPrice(portfolioHistories[h.symbol] || {}, ym);
           val += p != null ? h.quantity * p * fx : (h.costBasisINR || 0);
@@ -187,13 +325,10 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
       portVal[ym] = Math.round(val);
     }
 
-    // ── Benchmark portfolios ─────────────────────────────────────────────────
-    // Investment events: each holding is a lump-sum at acquisition date
     const investEvents = equityHoldings
       .filter(h => holdingYM(h) && (h.costBasisINR || 0) > 0)
       .map(h => ({ ym: holdingYM(h), amountINR: h.costBasisINR }));
 
-    // Group events by month for fast lookup
     const eventsByMonth = {};
     for (const ev of investEvents)
       eventsByMonth[ev.ym] = (eventsByMonth[ev.ym] || 0) + ev.amountINR;
@@ -207,23 +342,18 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
       const valByMonth = {};
 
       for (const ym of months) {
-        // Buy benchmark units from new investments this month
         const invested = eventsByMonth[ym] || 0;
         if (invested > 0) {
           const bmP = nearestPrice(hist, ym);
           if (bmP != null && bmP > 0) {
             if (bm.key === "sp500") {
-              // S&P is USD → convert INR to USD first
               const fx = nearestPrice(usdinrHistory, ym) || fallbackUSDINR;
               cumUnits += (invested / fx) / bmP;
             } else {
-              // Gold, Nifty: INR-denominated price
               cumUnits += invested / bmP;
             }
           }
         }
-
-        // Value at this month's price
         if (cumUnits > 0) {
           const bmP = nearestPrice(hist, ym);
           if (bmP != null) {
@@ -239,7 +369,6 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
       bmVal[bm.key] = valByMonth;
     }
 
-    // ── Assemble ─────────────────────────────────────────────────────────────
     return months.map(ym => ({
       ym,
       label:     fmtMonthLabel(ym),
@@ -250,20 +379,20 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
     }));
   }, [portfolioHistories, usdinrHistory, bmHistories, equityHoldings, liveData]);
 
-  // ── Slice full history to the selected time range ───────────────────────────
+  // ── Slice to selected range (growth chart only) ───────────────────────────────
   const visibleData = useMemo(() => {
     if (!chartData || chartData.length === 0) return chartData;
     const cfg = RANGES.find(r => r.label === range);
-    if (!cfg || (!cfg.months && !cfg.ytd)) return chartData; // "All"
+    if (!cfg || (!cfg.months && !cfg.ytd)) return chartData;
     const endYM = nowYM();
     const startYM = cfg.ytd
       ? `${new Date().getFullYear()}-01`
       : subtractMonths(endYM, cfg.months);
     const sliced = chartData.filter(d => d.ym >= startYM);
-    return sliced.length >= 2 ? sliced : chartData; // fall back to All if too short
+    return sliced.length >= 2 ? sliced : chartData;
   }, [chartData, range]);
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
   const card = {
     background:T.card, borderRadius:"14px",
     border:`1px solid ${T.border}`, padding:"18px 16px",
@@ -298,7 +427,6 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
     );
   }
 
-  // Summary stats — computed from visible window
   const portPoints  = visibleData.filter(d => d.portfolio != null);
   const firstVal    = portPoints[0]?.portfolio;
   const lastVal     = portPoints[portPoints.length - 1]?.portfolio;
@@ -330,7 +458,7 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
 
   return (
     <div style={card}>
-      {/* Header row */}
+      {/* ── Growth chart ─────────────────────────────────────────────────────── */}
       <div style={{ display:"flex", justifyContent:"space-between",
         alignItems:"flex-start", marginBottom:"16px", flexWrap:"wrap", gap:"8px" }}>
         <div>
@@ -358,7 +486,6 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
         )}
       </div>
 
-      {/* Time range selector */}
       <div style={{ display:"flex", gap:"4px", flexWrap:"wrap", marginBottom:"14px" }}>
         {RANGES.map(r => {
           const active = range === r.label;
@@ -398,6 +525,9 @@ export default function PortfolioGrowthChart({ equityHoldings, liveData }) {
         Gold = GOLDBEES.NS · Nifty = ^NSEI · S&amp;P 500 via ^GSPC × USD/INR history
         · Prices cached locally after first fetch
       </div>
+
+      {/* ── Drawdown chart ───────────────────────────────────────────────────── */}
+      <DrawdownSection chartData={chartData}/>
     </div>
   );
 }
