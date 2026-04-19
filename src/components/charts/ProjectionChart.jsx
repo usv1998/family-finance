@@ -15,28 +15,30 @@ const SEGMENTS = [
   { key:"rsu",    label:"RSU (Projected)",  color:T.purple },
   { key:"espp",   label:"ESPP",             color:T.teal   },
   { key:"epf",    label:"EPF",              color:T.accent },
+  { key:"car",    label:"Car Lease",        color:"#6366F1"},
 ];
 
 // Annualized baseline for a person from their latest FY with data
 function getBaseline(person, incomeData) {
   const fys = Object.keys(incomeData || {}).filter(k => k.startsWith("FY")).sort();
   for (let i = fys.length - 1; i >= 0; i--) {
-    let salary = 0, epf = 0, espp = 0, count = 0;
+    let salary = 0, epf = 0, espp = 0, car = 0, count = 0;
     for (let mi = 0; mi < 12; mi++) {
       const d = incomeData[fys[i]]?.[person]?.[mi] || {};
       if (d.take_home) {
         salary += Number(d.take_home || 0);
         epf    += Number(d.epf      || 0);
         espp   += getEsspINR(d);
+        car    += person === "Selva" ? Number(d.car_lease || 0) : 0;
         count++;
       }
     }
     if (count > 0) {
-      const f = 12 / count;  // annualisation factor
-      return { salary: salary * f, epf: epf * f, espp: espp * f, baseFY: fys[i] };
+      const f = 12 / count;
+      return { salary: salary * f, epf: epf * f, espp: espp * f, car: car * f, baseFY: fys[i] };
     }
   }
-  return { salary: 0, epf: 0, espp: 0, baseFY: null };
+  return { salary: 0, epf: 0, espp: 0, car: 0, baseFY: null };
 }
 
 // Sum RSU projected vests for a FY window from grant schedules
@@ -72,21 +74,20 @@ function futureFYs(baseFY, count) {
   });
 }
 
-// Compute actual FY data (same logic as IncomeGrowthChart)
-function computeActual(fy, incomeData, rsuData) {
-  let salary = 0, rsu = 0, espp = 0, epf = 0;
+// Compute actual FY data — uses same sources as SummaryCards
+function computeActual(fy, incomeData) {
+  let salary = 0, rsu = 0, espp = 0, epf = 0, car = 0;
   for (const p of PERSONS) {
     for (let mi = 0; mi < 12; mi++) {
       const d = incomeData?.[fy]?.[p]?.[mi] || {};
       salary += Number(d.take_home || 0);
       espp   += getEsspINR(d);
-      epf    += Number(d.epf      || 0);
-    }
-    for (const e of (rsuData?.[fy] || []).filter(e => e.person === p)) {
-      rsu += (e.units_vested - (e.tax_withheld_units || 0)) * e.stock_price_usd * e.usd_inr_rate;
+      epf    += Number(d.epf || 0);
+      car    += p === "Selva" ? Number(d.car_lease || 0) : 0;
+      rsu    += (Number(d.rsu_net_shares)||0) * (Number(d.rsu_price_usd)||0) * (Number(d.rsu_usd_inr)||0);
     }
   }
-  return { salary, rsu, espp, epf };
+  return { salary, rsu, espp, epf, car };
 }
 
 function fmtL(n) {
@@ -145,8 +146,8 @@ export default function ProjectionChart({ incomeData, rsuData, rsuGrants, liveDa
     ])].filter(k => k.startsWith("FY") && k >= currFY).sort();
 
     const actuals = actualFYs.map(fy => {
-      const c = computeActual(fy, incomeData, rsuData);
-      const total = c.salary + c.rsu + c.espp + c.epf;
+      const c = computeActual(fy, incomeData);
+      const total = c.salary + c.rsu + c.espp + c.epf + c.car;
       return { fy, name: fy.replace("FY",""), ...c, total, projected: false };
     }).filter(d => d.total > 0);
 
@@ -162,17 +163,18 @@ export default function ProjectionChart({ incomeData, rsuData, rsuGrants, liveDa
 
     const projections = projFYs.map((fy, i) => {
       const n = i + 1;
-      let salary = 0, epf = 0, espp = 0;
+      let salary = 0, epf = 0, espp = 0, car = 0;
       for (const p of PERSONS) {
         const b = baselines[p];
         const g = growthMap[p];
         salary += b.salary * Math.pow(1 + g, n);
         epf    += b.epf    * Math.pow(1 + g, n);
         espp   += b.espp;  // flat assumption
+        car    += b.car;   // flat assumption
       }
       const rsu   = includeRsu ? projectedRSU(fy, rsuGrants || [], liveData || {}) : 0;
-      const total = salary + rsu + espp + epf;
-      return { fy, name: fy.replace("FY","") + " ▸", salary, rsu, espp, epf, total, projected: true };
+      const total = salary + rsu + espp + epf + car;
+      return { fy, name: fy.replace("FY","") + " ▸", salary, rsu, espp, epf, car, total, projected: true };
     });
 
     return [...actuals, ...projections];

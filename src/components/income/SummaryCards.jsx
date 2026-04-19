@@ -14,7 +14,7 @@ export default function SummaryCards({ incomeData, rsuData, investmentsData, fy 
   const totalRSUINR   = sum((p,mi)=>{ const d=incomeData?.[fy]?.[p]?.[mi]||{}; return (Number(d.rsu_net_shares)||0)*(Number(d.rsu_price_usd)||0)*(Number(d.rsu_usd_inr)||0); });
   const totalCar      = sum((p,mi)=>p==="Selva"?Number(incomeData?.[fy]?.[p]?.[mi]?.car_lease):0);
   const totalAH       = sum((p,mi)=>(incomeData?.[fy]?.[p]?.[mi]?.ad_hoc||[]).reduce((a,i)=>a+(Number(i.amount)||0),0));
-  const grand         = totalTH + totalEPF + totalESPPINR + totalRSUINR + totalCar + totalAH;
+  const grand         = totalTH + empEPF + totalESPPINR + totalRSUINR + totalCar + totalAH;
   const cards = [
     {label:"Total Take-Home",  value:fmtINR(totalTH),                                color:T.accent},
     {label:"RSU Net Shares",   value:`${totalRSUSh} shares`, sub:fmtINR(totalRSUINR), color:T.purple},

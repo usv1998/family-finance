@@ -15,25 +15,25 @@ const SEGMENTS = [
   { key:"rsu",    label:"RSU (Net)",         color:T.purple  },
   { key:"espp",   label:"ESPP",              color:T.teal    },
   { key:"epf",    label:"EPF",               color:T.accent  },
+  { key:"car",    label:"Car Lease",         color:"#6366F1" },
   { key:"bonus",  label:"Bonus / Ad-hoc",    color:T.amber   },
 ];
 
-function computeFYData(fy, incomeData, rsuData) {
-  let salary = 0, rsu = 0, espp = 0, epf = 0, bonus = 0;
+function computeFYData(fy, incomeData) {
+  let salary = 0, rsu = 0, espp = 0, epf = 0, car = 0, bonus = 0;
   for (const p of PERSONS) {
     for (let mi = 0; mi < 12; mi++) {
       const d = incomeData?.[fy]?.[p]?.[mi] || {};
       salary += Number(d.take_home || 0);
       espp   += getEsspINR(d);
-      epf    += Number(d.epf       || 0);
+      epf    += Number(d.epf || 0);
+      car    += p === "Selva" ? Number(d.car_lease || 0) : 0;
       bonus  += (d.ad_hoc || []).reduce((s, i) => s + Number(i.amount || 0), 0);
-    }
-    for (const e of (rsuData?.[fy] || []).filter(e => e.person === p)) {
-      rsu += (e.units_vested - (e.tax_withheld_units || 0)) * e.stock_price_usd * e.usd_inr_rate;
+      rsu    += (Number(d.rsu_net_shares)||0) * (Number(d.rsu_price_usd)||0) * (Number(d.rsu_usd_inr)||0);
     }
   }
-  const total = salary + rsu + espp + epf + bonus;
-  return { fy, name: fy.replace("FY", ""), salary, rsu, espp, epf, bonus, total };
+  const total = salary + rsu + espp + epf + car + bonus;
+  return { fy, name: fy.replace("FY", ""), salary, rsu, espp, epf, car, bonus, total };
 }
 
 function fmtL(n) {
@@ -115,7 +115,7 @@ export default function IncomeGrowthChart({ incomeData, rsuData }) {
       ...Object.keys(incomeData || {}),
       ...Object.keys(rsuData   || {}),
     ])].filter(k => k.startsWith("FY") && k >= currFY).sort();
-    return allFYs.map(fy => computeFYData(fy, incomeData, rsuData));
+    return allFYs.map(fy => computeFYData(fy, incomeData));
   }, [incomeData, rsuData]);
 
   if (!data.length) return (

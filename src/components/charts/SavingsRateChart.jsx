@@ -9,17 +9,17 @@ import { PERSONS, MONTHS } from "../../lib/constants";
 
 // ── data helpers ──────────────────────────────────────────────────────────────
 
-function computeFYIncome(fy, incomeData, rsuData) {
+function computeFYIncome(fy, incomeData) {
   let total = 0;
   for (const p of PERSONS) {
     for (let mi = 0; mi < 12; mi++) {
       const d = incomeData?.[fy]?.[p]?.[mi] || {};
-      total += Number(d.take_home || 0) + getEsspINR(d)
+      total += Number(d.take_home || 0)
+             + getEsspINR(d)
              + Number(d.epf || 0)
+             + (p === "Selva" ? Number(d.car_lease || 0) : 0)
+             + (Number(d.rsu_net_shares)||0) * (Number(d.rsu_price_usd)||0) * (Number(d.rsu_usd_inr)||0)
              + (d.ad_hoc || []).reduce((s, i) => s + Number(i.amount || 0), 0);
-    }
-    for (const e of (rsuData?.[fy] || []).filter(e => e.person === p)) {
-      total += (e.units_vested - (e.tax_withheld_units || 0)) * e.stock_price_usd * e.usd_inr_rate;
     }
   }
   return total;
@@ -85,7 +85,7 @@ export default function SavingsRateChart({ incomeData, rsuData, expensesData }) 
     ])].filter(k => k.startsWith("FY") && k >= currFY).sort();
 
     return allFYs.map(fy => {
-      const income   = computeFYIncome(fy, incomeData, rsuData);
+      const income   = computeFYIncome(fy, incomeData);
       const expenses = computeFYExpenses(fy, expensesData);
       const savings  = income - expenses;
       const rate     = income > 0 ? (savings / income) * 100 : 0;
