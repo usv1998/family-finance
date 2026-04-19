@@ -385,7 +385,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
 
 export default function PortfolioTab({
   holdingsData, rsuData, incomeData, investmentsData, rsuGrants, liveData, fy,
-  onAddHolding, onDeleteHolding, onUpdateHolding, onUpsertHoldings,
+  onAddHolding, onDeleteHolding, onUpdateHolding, onUpdateHoldingsBatch, onUpsertHoldings,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
   const [view,          setView]          = useState("overview");
@@ -517,12 +517,10 @@ export default function PortfolioTab({
           onDelete={onDeleteHolding}
           onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}
           onUpdateFundCategory={(schemeCode, person, cat) => {
-            // Apply to every lot of this fund (same schemeCode + person)
-            for (const h of holdingsData) {
-              if (h.type === "mf" && h.schemeCode === schemeCode && h.person === person) {
-                onUpdateHolding(h.id, { categoryOverride: cat || undefined });
-              }
-            }
+            const updates = holdingsData
+              .filter(h => h.type === "mf" && h.schemeCode === schemeCode && h.person === person)
+              .map(h => ({ id: h.id, changes: { categoryOverride: cat || undefined } }));
+            if (updates.length > 0) onUpdateHoldingsBatch(updates);
           }}
           onDeleteDerived={h => {
             if (h.source === "rsu") onDeleteRsuEvent(h.id.replace("derived-rsu-", ""));

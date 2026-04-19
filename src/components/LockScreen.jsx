@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { T } from "../lib/theme";
 import { authenticateBiometric, clearBiometricEnrollment, isBiometricSupported } from "../lib/biometric";
 
 export default function LockScreen({ onUnlock, onSignOut }) {
   const [state,  setState]  = useState("idle"); // "idle" | "prompting" | "error"
   const [errMsg, setErrMsg] = useState("");
+
+  // Auto-prompt on mount so user doesn't need to tap
+  useEffect(() => { tryUnlock(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tryUnlock = async () => {
     setState("prompting");
@@ -31,6 +34,7 @@ export default function LockScreen({ onUnlock, onSignOut }) {
   return (
     <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center",
       justifyContent:"center", fontFamily:"'DM Sans',-apple-system,sans-serif" }}>
+      <style>{`@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}`}</style>
       <div style={{ background:T.surface, borderRadius:"20px", padding:"44px 36px",
         border:`1px solid ${T.border}`, width:"100%", maxWidth:"320px", textAlign:"center" }}>
 

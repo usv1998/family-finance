@@ -198,6 +198,16 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
+  const updateHoldingsBatch = (updates) => {
+    // updates: array of { id, changes }
+    const next = holdingsData.map(h => {
+      const u = updates.find(u => u.id === h.id);
+      return u ? { ...h, ...u.changes } : h;
+    });
+    setHoldingsData(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+  };
+
   // Bulk upsert from CAS import: match by schemeCode + person → update; else add new.
   const upsertHoldings = (person, items) => {
     let next = [...holdingsData];
@@ -382,6 +392,7 @@ export default function FamilyFinanceTracker() {
             onAddHolding={addHolding}
             onDeleteHolding={deleteHolding}
             onUpdateHolding={updateHolding}
+            onUpdateHoldingsBatch={updateHoldingsBatch}
             onUpsertHoldings={upsertHoldings}
             onAddRsuEvent={addRsuEvent}
             onDeleteRsuEvent={deleteRsuEvent}

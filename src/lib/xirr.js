@@ -61,8 +61,8 @@ export function holdingXIRR(holding, currentValueINR) {
   if (!holding?.acquisitionDate || !(holding.costBasisINR > 0) || !(currentValueINR > 0)) return null;
   const acqDate = new Date(holding.acquisitionDate);
   const today   = new Date();
-  // Need at least ~7 days for a meaningful rate
-  if ((today - acqDate) < 7 * 24 * 60 * 60 * 1000) return null;
+  // XIRR is only meaningful for holding periods >= 1 year
+  if ((today - acqDate) < 365 * 24 * 60 * 60 * 1000) return null;
   return xirr([
     { amount: -holding.costBasisINR, date: acqDate },
     { amount: currentValueINR,       date: today   },
@@ -88,7 +88,10 @@ export function portfolioXIRR(enrichedHoldings) {
 
   if (flows.length === 0 || totalValue <= 0) return null;
 
-  flows.push({ amount: totalValue, date: today });
   flows.sort((a, b) => a.date - b.date);
+  // Only show XIRR when oldest holding is >= 1 year old
+  if ((today - flows[0].date) < 365 * 24 * 60 * 60 * 1000) return null;
+
+  flows.push({ amount: totalValue, date: today });
   return xirr(flows);
 }
