@@ -28,12 +28,8 @@ export default function LockScreen({ userEmail, onUnlock, onSignOut }) {
     if (phase === "unsupported") onUnlock();
   }, []); // eslint-disable-line
 
-  // Auto-attempt when already enrolled (small delay helps on some Android versions)
-  useEffect(() => {
-    if (phase !== "idle") return;
-    const t = setTimeout(() => doUnlock(), 400);
-    return () => clearTimeout(t);
-  }, []); // eslint-disable-line
+  // No auto-trigger: Chrome on Android requires a user gesture (tap) before showing
+  // the biometric dialog — firing it from useEffect causes immediate NotAllowedError.
 
   // ── authenticate (unlock) ─────────────────────────────────────────────────
   const doUnlock = async () => {
