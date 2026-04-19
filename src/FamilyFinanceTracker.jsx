@@ -208,54 +208,93 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
-  // Replace all lots for given in_stock symbols + person, then add new lots from tradebook.
-  const replaceStockLots = (person, stocks) => {
-    const symbols = new Set(stocks.map(s => s.symbol));
-    // Remove all existing lots for these symbols + person
-    let next = holdingsData.filter(h =>
-      !(h.type === "in_stock" && h.person === person && symbols.has(h.symbol))
-    );
-    // Add new per-lot holdings
-    for (const stock of stocks) {
-      for (const lot of stock.lots) {
-        next = [...next, {
-          id:              genId(),
-          type:            "in_stock",
-          person,
-          name:            stock.symbol,
-          symbol:          stock.symbol,
-          quantity:        lot.qty,
-          costBasisINR:    lot.costBasisINR,
-          acquisitionDate: lot.date,
-        }];
+  // Apply FIFO sells against a mutable lot array (sorted oldest-first).
+  // Mutates lots in place, removes fully-sold lots.
+  const applyFifoSells = (lots, sells, qtyKey) => {
+    // Sort sells by date so they're applied chronologically
+    const sortedSells = [...sells].sort((a, b) => a.date.localeCompare(b.date));
+    for (const sell of sortedSells) {
+      let remaining = sell.qty;
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        if (lot.date > sell.date) break; // can only sell lots bought before sell date
+        const before = lot[qtyKey];
+        const deduct = Math.min(before, remaining);
+        lot[qtyKey]      = before - deduct;
+        lot.costBasisINR = before > 0 ? lot.costBasisINR * (lot[qtyKey] / before) : 0;
+        remaining -= deduct;
       }
+    }
+    return lots.filter(l => l[qtyKey] > 0.0001);
+  };
+
+  // Merge new stock lots into existing, dedup by (date+qty+avgPrice), apply FIFO sells.
+  const mergeStockLots = (person, stocks) => {
+    let next = [...holdingsData];
+    for (const stock of stocks) {
+      // Existing lots for this symbol+person as mutable objects
+      const existing = next
+        .filter(h => h.type === "in_stock" && h.person === person && h.symbol === stock.symbol)
+        .map(h => ({ ...h }));
+      next = next.filter(h => !(h.type === "in_stock" && h.person === person && h.symbol === stock.symbol));
+
+      // Merge new buy lots — skip if same (date, qty, avgPrice) already exists
+      for (const lot of stock.lots) {
+        const isDup = existing.some(e =>
+          e.acquisitionDate === lot.date &&
+          Math.abs(e.quantity - lot.qty) < 0.001 &&
+          Math.abs((e.costBasisINR / e.quantity) - lot.avgPrice) < 0.01
+        );
+        if (!isDup) {
+          existing.push({
+            id: genId(), type: "in_stock", person,
+            name: stock.symbol, symbol: stock.symbol,
+            quantity: lot.qty, costBasisINR: lot.costBasisINR,
+            acquisitionDate: lot.date,
+          });
+        }
+      }
+
+      // Sort oldest-first, apply FIFO sells, push survivors back
+      existing.sort((a, b) => a.acquisitionDate.localeCompare(b.acquisitionDate));
+      const survivors = applyFifoSells(existing, stock.sells || [], "quantity");
+      next = [...next, ...survivors];
     }
     setHoldingsData(next);
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
   };
 
-  // Replace all MF lots for given ISINs/schemeCodes + person, add one holding per SIP lot.
-  const replaceMFLots = (person, funds) => {
-    const schemeCodes = new Set(funds.map(f => f.schemeCode).filter(Boolean));
-    const isins       = new Set(funds.map(f => f.isin).filter(Boolean));
-    let next = holdingsData.filter(h =>
-      !(h.type === "mf" && h.person === person &&
-        ((h.schemeCode && schemeCodes.has(h.schemeCode)) || (h.isin && isins.has(h.isin))))
-    );
+  // Merge new MF SIP lots into existing, dedup by (date, units, navPrice), apply FIFO sells.
+  const mergeMFLots = (person, funds) => {
+    let next = [...holdingsData];
     for (const fund of funds) {
+      const matchKey = h =>
+        h.type === "mf" && h.person === person &&
+        ((fund.schemeCode && h.schemeCode === fund.schemeCode) || h.isin === fund.isin);
+
+      const existing = next.filter(matchKey).map(h => ({ ...h }));
+      next = next.filter(h => !matchKey(h));
+
       for (const lot of fund.lots) {
-        next = [...next, {
-          id:              genId(),
-          type:            "mf",
-          person,
-          name:            fund.name,
-          schemeCode:      fund.schemeCode || "",
-          isin:            fund.isin,
-          units:           lot.qty,
-          costBasisINR:    lot.costBasisINR,
-          acquisitionDate: lot.date,
-        }];
+        const isDup = existing.some(e =>
+          e.acquisitionDate === lot.date &&
+          Math.abs(e.units - lot.qty) < 0.001
+        );
+        if (!isDup) {
+          existing.push({
+            id: genId(), type: "mf", person,
+            name: fund.schemeName || fund.name,
+            schemeCode: fund.schemeCode || "",
+            isin: fund.isin,
+            units: lot.qty, costBasisINR: lot.costBasisINR,
+            acquisitionDate: lot.date,
+          });
+        }
       }
+
+      existing.sort((a, b) => a.acquisitionDate.localeCompare(b.acquisitionDate));
+      const survivors = applyFifoSells(existing, fund.sells || [], "units");
+      next = [...next, ...survivors];
     }
     setHoldingsData(next);
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
@@ -447,8 +486,8 @@ export default function FamilyFinanceTracker() {
             onUpdateHolding={updateHolding}
             onUpdateHoldingsBatch={updateHoldingsBatch}
             onUpsertHoldings={upsertHoldings}
-            onReplaceStockLots={replaceStockLots}
-            onReplaceMFLots={replaceMFLots}
+            onMergeStockLots={mergeStockLots}
+            onMergeMFLots={mergeMFLots}
             onAddRsuEvent={addRsuEvent}
             onDeleteRsuEvent={deleteRsuEvent}
             onAddRsuGrant={addRsuGrant}

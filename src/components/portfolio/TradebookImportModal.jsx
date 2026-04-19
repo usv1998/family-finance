@@ -30,45 +30,68 @@ function parseTradebook(text) {
   const stockOrders = {};
   const mfByIsin    = {};
 
+  // Collect buys and sells separately
+  const stockBuyOrders = {}; // orderId → aggregated buy lot
+  const stockSells     = {}; // symbol  → [{ date, qty }]
+  const mfBuyByIsin    = {}; // isin    → { name, lots[] }
+  const mfSellByIsin   = {}; // isin    → [{ date, qty }]
+
   for (let i = 1; i < lines.length; i++) {
     const cells = lines[i].split(",").map(unquote);
     if (cells.length < 8) continue;
-    if (cells[typeCol].toLowerCase() !== "buy") continue;
+
+    const tradeType = cells[typeCol].toLowerCase();
+    if (tradeType !== "buy" && tradeType !== "sell") continue;
 
     const segment = (cells[segCol] || "").toUpperCase();
     const isin    = cells[isinCol];
     const date    = cells[dateCol].slice(0, 10);
     const qty     = parseFloat(cells[qtyCol])   || 0;
     const price   = parseFloat(cells[priceCol]) || 0;
-    if (qty <= 0 || price <= 0 || !date) continue;
+    if (qty <= 0 || !date) continue;
 
     if (segment === "MF") {
       const rawName = cells[symCol];
-      if (!mfByIsin[isin]) mfByIsin[isin] = { isin, name: rawName, lots: [] };
-      if (rawName.length < mfByIsin[isin].name.length) mfByIsin[isin].name = rawName;
-      mfByIsin[isin].lots.push({ date, qty, navPrice: price, costBasisINR: qty * price });
+      if (tradeType === "buy") {
+        if (!mfBuyByIsin[isin]) mfBuyByIsin[isin] = { isin, name: rawName, lots: [] };
+        if (rawName.length < mfBuyByIsin[isin].name.length) mfBuyByIsin[isin].name = rawName;
+        mfBuyByIsin[isin].lots.push({ date, qty, navPrice: price, costBasisINR: qty * price });
+      } else {
+        if (!mfSellByIsin[isin]) mfSellByIsin[isin] = [];
+        mfSellByIsin[isin].push({ date, qty });
+      }
     } else {
       const symbol  = cells[symCol].toUpperCase();
       const orderId = cells[orderCol] || `${symbol}-${date}-${price}`;
-      if (!stockOrders[orderId]) stockOrders[orderId] = { symbol, isin, date, totalQty:0, totalValue:0 };
-      stockOrders[orderId].totalQty   += qty;
-      stockOrders[orderId].totalValue += qty * price;
+      if (tradeType === "buy") {
+        if (!stockBuyOrders[orderId]) stockBuyOrders[orderId] = { symbol, isin, date, totalQty:0, totalValue:0 };
+        stockBuyOrders[orderId].totalQty   += qty;
+        stockBuyOrders[orderId].totalValue += qty * price;
+      } else {
+        if (!stockSells[symbol]) stockSells[symbol] = [];
+        stockSells[symbol].push({ date, qty });
+      }
     }
   }
 
   const bySymbol = {};
-  for (const o of Object.values(stockOrders)) {
-    if (!bySymbol[o.symbol]) bySymbol[o.symbol] = { symbol:o.symbol, isin:o.isin, lots:[] };
+  for (const o of Object.values(stockBuyOrders)) {
+    if (!bySymbol[o.symbol]) bySymbol[o.symbol] = { symbol:o.symbol, isin:o.isin, lots:[], sells:[] };
     bySymbol[o.symbol].lots.push({
       date: o.date, qty: o.totalQty,
       avgPrice: o.totalValue / o.totalQty,
       costBasisINR: o.totalValue,
     });
   }
+  for (const [sym, sells] of Object.entries(stockSells)) {
+    if (!bySymbol[sym]) bySymbol[sym] = { symbol:sym, isin:"", lots:[], sells:[] };
+    bySymbol[sym].sells.push(...sells);
+  }
 
-  const mfList = Object.values(mfByIsin).map(f => {
+  const mfList = Object.values(mfBuyByIsin).map(f => {
     f.lots.sort((a,b) => a.date.localeCompare(b.date));
     return { ...f,
+      sells: mfSellByIsin[f.isin] || [],
       totalUnits: f.lots.reduce((s,l) => s + l.qty, 0),
       totalCost:  f.lots.reduce((s,l) => s + l.costBasisINR, 0),
     };

@@ -459,7 +459,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
 export default function PortfolioTab({
   holdingsData, rsuData, incomeData, investmentsData, rsuGrants, liveData, fy,
   onAddHolding, onDeleteHolding, onUpdateHolding, onUpdateHoldingsBatch, onUpsertHoldings,
-  onReplaceStockLots, onReplaceMFLots,
+  onMergeStockLots, onMergeMFLots,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
   const [view,          setView]          = useState("holdings");
@@ -582,8 +582,8 @@ export default function PortfolioTab({
       {showTradebookImport && (
         <TradebookImportModal
           holdingsData={holdingsData}
-          onReplaceStockLots={onReplaceStockLots}
-          onReplaceMFLots={onReplaceMFLots}
+          onReplaceStockLots={onMergeStockLots}
+          onReplaceMFLots={onMergeMFLots}
           onClose={() => setShowTradebookImport(false)}/>
       )}
 
