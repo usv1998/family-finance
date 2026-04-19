@@ -314,7 +314,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
 
               {catOpen && Object.entries(typeMap).map(([type, holdings]) => {
                 const typeKey  = `type-${cat}-${type}`;
-                const typeOpen = expanded[typeKey] !== false;
+                const typeOpen = expanded[typeKey] === true;
                 const typeVal  = holdings.reduce((s, h) => s + (h.currentValue || 0), 0);
                 const typeCost = holdings.reduce((s, h) => s + (h.costBasisINR || h.principal || h.balance || 0), 0);
                 const typeGain = typeVal - typeCost;
