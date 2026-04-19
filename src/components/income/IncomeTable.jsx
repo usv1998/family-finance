@@ -1,60 +1,120 @@
 import { T } from "../../lib/theme";
 import { fmtINR, getEsspINR } from "../../lib/formatters";
-import { MONTHS, PERSONS } from "../../lib/constants";
+import { MONTHS, MONTH_FULL, PERSONS } from "../../lib/constants";
 
 export default function IncomeTable({ incomeData, rsuData, fy, viewMode, highlightMonth, onSelectMonth }) {
-  const persons = viewMode==="combined" ? PERSONS : [viewMode];
-  const getMD        = (p,mi) => incomeData?.[fy]?.[p]?.[mi] || {};
-  const getRSUShares = (p,mi) => Number(incomeData?.[fy]?.[p]?.[mi]?.rsu_net_shares) || 0;
-  const getRSUINR    = (p,mi) => { const d=incomeData?.[fy]?.[p]?.[mi]||{}; return (Number(d.rsu_net_shares)||0)*(Number(d.rsu_price_usd)||0)*(Number(d.rsu_usd_inr)||0); };
-
-  const rows = [
-    {key:"take_home", label:"Take-Home Salary"},
-    {key:"epf",       label:"EPF Contribution"},
-    {key:"espp",      label:"ESPP Net Shares",   computed:true, isShares:true},
-    {key:"car_lease", label:"Car Lease",          personFilter:"Selva"},
-    {key:"rsu",       label:"RSU Net Shares",     computed:true, isShares:true},
-    {key:"ad_hoc",    label:"Ad-hoc / Bonus",     computed:true},
-    {key:"total",     label:"Monthly Total",      isTotal:true},
-  ];
-
-  const getVal=(row,p,mi)=>{
-    const d=getMD(p,mi);
-    if(row.key==="rsu")    return getRSUShares(p,mi);
-    if(row.key==="espp")   return Number(d.espp_shares) || 0;
-    if(row.key==="ad_hoc") return (d.ad_hoc||[]).reduce((s,i)=>s+(Number(i.amount)||0),0);
-    if(row.key==="total")  return (Number(d.take_home)||0)+(Number(d.epf)||0)+getEsspINR(d)+(Number(d.car_lease)||0)+getRSUINR(p,mi)+(d.ad_hoc||[]).reduce((s,i)=>s+(Number(i.amount)||0),0);
-    return Number(d[row.key])||0;
+  const persons   = viewMode === "combined" ? PERSONS : [viewMode];
+  const getMD     = (p, mi) => incomeData?.[fy]?.[p]?.[mi] || {};
+  const getRSUINR = (p, mi) => {
+    const d = incomeData?.[fy]?.[p]?.[mi] || {};
+    return (Number(d.rsu_net_shares)||0) * (Number(d.rsu_price_usd)||0) * (Number(d.rsu_usd_inr)||0);
   };
-  const getCombined=(row,mi)=>persons.reduce((s,p)=>s+getVal(row,p,mi),0);
-  const getRowTotal=(row)=>MONTHS.reduce((s,_,mi)=>s+getCombined(row,mi),0);
+
+  const getMonthTotal = (mi) => persons.reduce((s, p) => {
+    const d = getMD(p, mi);
+    return s
+      + (Number(d.take_home)||0)
+      + (Number(d.epf)||0)
+      + getEsspINR(d)
+      + (p==="Selva" ? Number(d.car_lease)||0 : 0)
+      + getRSUINR(p, mi)
+      + (d.ad_hoc||[]).reduce((a,i)=>a+(Number(i.amount)||0),0);
+  }, 0);
+
+  const fyTotal = MONTHS.reduce((s,_,mi) => s + getMonthTotal(mi), 0);
+
+  // Per-component FY totals (for the summary row)
+  const compTotal = (key) => persons.reduce((s,p) =>
+    s + MONTHS.reduce((ss,_,mi)=>{
+      const d = getMD(p,mi);
+      if (key==="rsu")    return ss + getRSUINR(p,mi);
+      if (key==="espp")   return ss + getEsspINR(d);
+      if (key==="ad_hoc") return ss + (d.ad_hoc||[]).reduce((a,i)=>a+(Number(i.amount)||0),0);
+      return ss + (Number(d[key])||0);
+    }, 0)
+  , 0);
+
   return (
-    <div style={{ overflowX:"auto", borderRadius:"12px", border:`1px solid ${T.border}` }}>
-      <table style={{ width:"100%", borderCollapse:"collapse", minWidth:"900px", fontSize:"13px" }}>
-        <thead>
-          <tr style={{ background:T.card }}>
-            <th style={{ padding:"12px 16px", textAlign:"left", color:T.textDim, fontSize:"11px", fontWeight:700, letterSpacing:"0.5px", borderBottom:`1px solid ${T.border}`, position:"sticky", left:0, background:T.card, zIndex:1 }}>COMPONENT</th>
-            {MONTHS.map((m,mi)=><th key={m} onClick={()=>onSelectMonth?.(mi)} style={{ padding:"12px 8px", textAlign:"right", color:mi===highlightMonth?T.accent:T.textDim, fontSize:"11px", fontWeight:700, borderBottom:`1px solid ${T.border}`, background:mi===highlightMonth?T.accentBg:"transparent", cursor:onSelectMonth?"pointer":"default" }}>{m.toUpperCase()}{mi===highlightMonth&&<span style={{ display:"block", fontSize:"9px", color:T.accent, letterSpacing:"0.5px" }}>NOW</span>}</th>)}
-            <th style={{ padding:"12px 16px", textAlign:"right", color:T.accent, fontSize:"11px", fontWeight:700, borderBottom:`1px solid ${T.border}` }}>FY TOTAL</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.filter(r=>!r.personFilter||persons.includes(r.personFilter)).map(row=>(
-            <tr key={row.key} style={{ background:row.isTotal?T.accentBg:"transparent", borderBottom:`1px solid ${row.isTotal?T.accent+"33":T.border}22` }}>
-              <td style={{ padding:"10px 16px", color:row.isTotal?T.accent:T.text, fontWeight:row.isTotal?700:500, fontSize:"12px", position:"sticky", left:0, background:row.isTotal?T.accentBg:T.surface, zIndex:1 }}>{row.label}</td>
-              {MONTHS.map((_,mi)=>{
-                const val=getCombined(row,mi);
-                const isCur = mi===highlightMonth;
-                const disp = row.isShares ? (val>0?`${val} sh`:"—") : (val>0?fmtINR(val):"—");
-                return <td key={mi} style={{ padding:"10px 8px", textAlign:"right", color:val>0?(row.isTotal?T.accent:row.isShares?T.teal:T.text):T.textMuted, fontFamily:"'JetBrains Mono',monospace", fontSize:"12px", fontWeight:row.isTotal?700:400, background:isCur?(row.isTotal?T.accent+"22":T.accentBg+"99"):"transparent", borderLeft:isCur?`1px solid ${T.accent}33`:"none", borderRight:isCur?`1px solid ${T.accent}33`:"none" }}>{disp}</td>;
-              })}
-              <td style={{ padding:"10px 16px", textAlign:"right", color:row.isTotal?T.accent:row.isShares?T.teal:T.white, fontFamily:"'JetBrains Mono',monospace", fontSize:"13px", fontWeight:700 }}>
-                {row.isShares ? (getRowTotal(row)>0?`${getRowTotal(row)} sh`:"—") : fmtINR(getRowTotal(row))}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div>
+      {/* FY total banner */}
+      <div style={{ background:T.accentBg, border:`1px solid ${T.accent}44`,
+        borderRadius:"12px", padding:"14px 18px", marginBottom:"14px",
+        display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span style={{ fontSize:"13px", fontWeight:700, color:T.textDim }}>FY Total</span>
+        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"20px",
+          fontWeight:800, color:T.accent }}>{fmtINR(fyTotal)}</span>
+      </div>
+
+      {/* Month cards */}
+      <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+        {MONTHS.map((m, mi) => {
+          const d0      = getMD(persons[0], mi);
+          const total   = getMonthTotal(mi);
+          const isCurr  = mi === highlightMonth;
+          const hasData = total > 0;
+
+          // Breakdown lines to show inside expanded card
+          const lines = [];
+          persons.forEach(p => {
+            const d = getMD(p, mi);
+            if (Number(d.take_home))   lines.push({ label: viewMode==="combined" ? `${p} Take-Home` : "Take-Home", value: fmtINR(Number(d.take_home)), color: T.text });
+            if (Number(d.epf))         lines.push({ label: viewMode==="combined" ? `${p} EPF` : "EPF",             value: fmtINR(Number(d.epf)),       color: T.blue });
+            const espp = getEsspINR(d);
+            if (espp)                  lines.push({ label: viewMode==="combined" ? `${p} ESPP` : "ESPP",           value: fmtINR(espp),                 color: T.teal });
+            const rsu = getRSUINR(p, mi);
+            if (rsu)                   lines.push({ label: viewMode==="combined" ? `${p} RSU` : "RSU",             value: fmtINR(rsu),                  color: T.purple });
+            if (p==="Selva" && Number(d.car_lease)) lines.push({ label:"Car Lease", value:fmtINR(Number(d.car_lease)), color:T.amber });
+            (d.ad_hoc||[]).forEach(i => {
+              if (Number(i.amount)) lines.push({ label: i.note||"Ad-hoc", value: fmtINR(Number(i.amount)), color: T.amber });
+            });
+          });
+
+          return (
+            <div key={m}
+              onClick={() => onSelectMonth?.(mi)}
+              style={{
+                background: isCurr ? T.accentBg : T.surface,
+                borderRadius:"12px",
+                border:`1px solid ${isCurr ? T.accent+"66" : T.border}`,
+                padding:"14px 16px",
+                cursor: onSelectMonth ? "pointer" : "default",
+              }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                  <span style={{ fontSize:"14px", fontWeight:700,
+                    color: isCurr ? T.accent : T.text }}>{MONTH_FULL[mi]}</span>
+                  {isCurr && (
+                    <span style={{ fontSize:"9px", fontWeight:700, color:T.accent,
+                      background:`${T.accent}22`, padding:"2px 6px", borderRadius:"4px",
+                      letterSpacing:"0.5px" }}>NOW</span>
+                  )}
+                </div>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"15px",
+                  fontWeight:800, color: hasData ? (isCurr ? T.accent : T.text) : T.textMuted }}>
+                  {hasData ? fmtINR(total) : "—"}
+                </span>
+              </div>
+              {lines.length > 0 && (
+                <div style={{ marginTop:"10px", display:"flex", flexDirection:"column", gap:"5px" }}>
+                  {lines.map((l, i) => (
+                    <div key={i} style={{ display:"flex", justifyContent:"space-between",
+                      fontSize:"12px", color:T.textMuted }}>
+                      <span>{l.label}</span>
+                      <span style={{ fontFamily:"'JetBrains Mono',monospace",
+                        color:l.color, fontWeight:600 }}>{l.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!hasData && (
+                <div style={{ marginTop:"6px", fontSize:"11px", color:T.textMuted }}>
+                  Tap to enter income
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

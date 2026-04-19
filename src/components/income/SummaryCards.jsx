@@ -23,7 +23,7 @@ export default function SummaryCards({ incomeData, rsuData, investmentsData, fy 
     {label:"Grand Total",      value:fmtINR(grand),                                  color:T.white, grand:true},
   ];
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:"12px", marginBottom:"20px" }}>
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:"10px", marginBottom:"20px" }}>
       {cards.map(c=>(
         <div key={c.label} style={sCard(c.grand)}>
           <div style={{ fontSize:"11px", color:T.textMuted, textTransform:"uppercase", fontWeight:600, letterSpacing:"0.5px", marginBottom:"6px" }}>{c.label}</div>

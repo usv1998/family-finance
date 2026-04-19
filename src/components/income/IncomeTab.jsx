@@ -120,33 +120,18 @@ export default function IncomeTab({ incomeData, rsuData, investmentsData, expens
       {section === "charts" && (
         <div style={{ background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`, padding:"20px" }}>
           {/* Chart toggle */}
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:"12px", marginBottom:"20px" }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:"12px", marginBottom:"20px" }}>
+            <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px", overflowX:"auto", scrollbarWidth:"none" }}>
+              <button onClick={()=>setChartView("income")}     style={{...btnStyle(chartView==="income"),  whiteSpace:"nowrap", flexShrink:0}}>Income Growth</button>
+              <button onClick={()=>setChartView("savings")}    style={{...btnStyle(chartView==="savings"), whiteSpace:"nowrap", flexShrink:0}}>Savings Rate</button>
+              <button onClick={()=>setChartView("projection")} style={{...btnStyle(chartView==="projection"), whiteSpace:"nowrap", flexShrink:0}}>Projection</button>
+            </div>
             <div>
               {{
-              income: (
-                <>
-                  <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Income Growth — All Financial Years</div>
-                  <div style={{ fontSize:"12px", color:T.textMuted }}>Stacked by component · Hover for breakdown · Click legend to hide/show · Dashed line = total trend</div>
-                </>
-              ),
-              savings: (
-                <>
-                  <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Savings Rate — All Financial Years</div>
-                  <div style={{ fontSize:"12px", color:T.textMuted }}>Income vs Expenses bars · Dashed line = savings rate % · Right axis = %</div>
-                </>
-              ),
-              projection: (
-                <>
-                  <div style={{ fontSize:"14px", fontWeight:700, color:T.text, marginBottom:"4px" }}>Income Projection</div>
-                  <div style={{ fontSize:"12px", color:T.textMuted }}>Actuals + projected FYs · Faded bars = projection · RSU from grant schedules at live prices</div>
-                </>
-              ),
+              income:     <div style={{ fontSize:"12px", color:T.textMuted }}>Stacked by component · Hover for breakdown · Dashed line = total trend</div>,
+              savings:    <div style={{ fontSize:"12px", color:T.textMuted }}>Income vs Expenses bars · Dashed line = savings rate % · Right axis = %</div>,
+              projection: <div style={{ fontSize:"12px", color:T.textMuted }}>Actuals + projected FYs · Faded bars = projection · RSU from grant schedules at live prices</div>,
             }[chartView]}
-            </div>
-            <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px" }}>
-              <button onClick={()=>setChartView("income")}     style={btnStyle(chartView==="income")}>Income Growth</button>
-              <button onClick={()=>setChartView("savings")}    style={btnStyle(chartView==="savings")}>Savings Rate</button>
-              <button onClick={()=>setChartView("projection")} style={btnStyle(chartView==="projection")}>Projection</button>
             </div>
           </div>
           <Suspense fallback={<div style={{ textAlign:"center", padding:"60px", color:T.textMuted }}>Loading chart…</div>}>
