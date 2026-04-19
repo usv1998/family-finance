@@ -300,15 +300,6 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
                       )}
                     </div>
                   </div>
-                  {/* Gain progress bar */}
-                  {catCost > 0 && (
-                    <div style={{ flex:1, minWidth:"80px" }}>
-                      <div style={{ height:"4px", borderRadius:"2px", background:T.border, overflow:"hidden" }}>
-                        <div style={{ width:`${Math.min(100, Math.abs(catGainPct||0) * 2)}%`,
-                          height:"100%", borderRadius:"2px", background:catGc, transition:"width 0.5s" }}/>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
