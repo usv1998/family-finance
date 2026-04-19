@@ -1,20 +1,27 @@
 import { useState } from "react";
 import { T } from "../../lib/theme";
-import { fmtINR, genId, getCurrentMonthIdx } from "../../lib/formatters";
+import { fmtINR, getCurrentMonthIdx } from "../../lib/formatters";
 import { MONTHS, MONTH_FULL } from "../../lib/constants";
 import { DEFAULT_CATEGORIES } from "./DailyExpensesTab";
 import { downloadCSV } from "../../lib/csvExport";
 
 export default function ExpensesTab({ expensesData, fy, onUpdate }) {
-  const inv       = expensesData?.[fy] || {};
-  const categories= inv.categories || DEFAULT_CATEGORIES.map(c => ({ ...c, budget: 0 }));
-  const actuals   = inv.actuals    || {};
+  const inv     = expensesData?.[fy] || {};
+  const actuals = inv.actuals || {};
+
+  // Always use DEFAULT_CATEGORIES as the master list, merging in any saved budgets by ID.
+  // This means new categories added in Daily Expenses automatically appear here.
+  const savedBudgetById = Object.fromEntries(
+    (inv.categories || []).map(c => [c.id, c.budget || 0])
+  );
+  const categories = DEFAULT_CATEGORIES.map(c => ({
+    ...c,
+    budget: savedBudgetById[c.id] ?? 0,
+  }));
 
   const [selMonth, setSelMonth] = useState(getCurrentMonthIdx);
   const [editVals, setEditVals] = useState({});
   const [editingMonth, setEditingMonth] = useState(null);
-  const [showAddCat, setShowAddCat] = useState(false);
-  const [newCat, setNewCat] = useState({ name:"", budget:"", color:"#22C55E" });
   const [editBudgets, setEditBudgets] = useState(false);
   const [budgetDraft, setBudgetDraft] = useState({});
 
@@ -29,7 +36,7 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   const ytdSurplus  = ytdBudget - ytdActual;
   const annualBudget= monthBudget() * 12;
 
-  const updateInv = (patch) => onUpdate(fy, { categories, actuals, ...inv, ...patch });
+  const updateInv = (patch) => onUpdate(fy, { ...inv, categories, actuals, ...patch });
 
   const exportExpenses = () => {
     const headers = ["Category", "Budget/Month", ...MONTHS, "FY Total Actual", "FY Budget", "Variance"];
@@ -56,18 +63,6 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
     categories.forEach(c=>{ const v=Number(editVals[c.id])||0; if(v>0) newActuals[editingMonth][c.id]=v; });
     updateInv({ actuals: newActuals });
     setEditingMonth(null);
-  };
-
-  const addCategory = () => {
-    if(!newCat.name.trim()) return;
-    const cat = { id: genId(), name: newCat.name.trim(), budget: Number(newCat.budget)||0, color: newCat.color };
-    updateInv({ categories: [...categories, cat] });
-    setNewCat({ name:"", budget:"", color:"#22C55E" });
-    setShowAddCat(false);
-  };
-
-  const deleteCategory = (id) => {
-    updateInv({ categories: categories.filter(c=>c.id!==id) });
   };
 
   const saveBudgets = () => {
@@ -262,39 +257,6 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
         )}
       </div>
 
-      {/* Manage categories */}
-      <div style={{ background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`, overflow:"hidden" }}>
-        <div style={{ padding:"14px 20px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <span style={{ fontSize:"14px", fontWeight:700, color:T.text }}>Manage Categories</span>
-          <button onClick={()=>setShowAddCat(!showAddCat)} style={{ padding:"7px 16px", background:showAddCat?T.card:T.accent, border:`1px solid ${showAddCat?T.border:T.accent}`, borderRadius:"8px", color:showAddCat?T.textDim:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
-            {showAddCat ? "Cancel" : "+ Add Category"}
-          </button>
-        </div>
-        {showAddCat && (
-          <div style={{ padding:"16px 20px", borderBottom:`1px solid ${T.border}`, display:"flex", gap:"10px", flexWrap:"wrap", alignItems:"flex-end" }}>
-            <div style={{ flex:"1 1 150px" }}><label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, display:"block", marginBottom:"4px" }}>NAME</label>
-              <input value={newCat.name} onChange={e=>setNewCat(v=>({...v,name:e.target.value}))} placeholder="e.g. Subscriptions" style={inp}/>
-            </div>
-            <div style={{ flex:"1 1 120px" }}><label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, display:"block", marginBottom:"4px" }}>MONTHLY BUDGET</label>
-              <input type="number" value={newCat.budget} onChange={e=>setNewCat(v=>({...v,budget:e.target.value}))} placeholder="e.g. 2000" style={inp}/>
-            </div>
-            <div><label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, display:"block", marginBottom:"4px" }}>COLOR</label>
-              <input type="color" value={newCat.color} onChange={e=>setNewCat(v=>({...v,color:e.target.value}))} style={{ width:"44px", height:"38px", padding:"2px", borderRadius:"8px", border:`1px solid ${T.border}`, background:T.card, cursor:"pointer" }}/>
-            </div>
-            <button onClick={addCategory} style={{ padding:"8px 20px", background:T.accent, border:"none", borderRadius:"8px", color:T.bg, fontSize:"13px", fontWeight:700, cursor:"pointer", height:"38px" }}>Add</button>
-          </div>
-        )}
-        <div style={{ padding:"12px 20px", display:"flex", flexWrap:"wrap", gap:"8px" }}>
-          {categories.map(cat=>(
-            <div key={cat.id} style={{ display:"flex", alignItems:"center", gap:"8px", padding:"7px 12px", background:T.card, borderRadius:"20px", border:`1px solid ${T.border}` }}>
-              <div style={{ width:"8px", height:"8px", borderRadius:"50%", background:cat.color }}/>
-              <span style={{ fontSize:"12px", fontWeight:600, color:T.text }}>{cat.name}</span>
-              <span style={{ fontSize:"11px", fontFamily:"'JetBrains Mono',monospace", color:T.textMuted }}>{fmtINR(cat.budget)}/mo</span>
-              <button onClick={()=>deleteCategory(cat.id)} style={{ background:"none", border:"none", color:T.textMuted, cursor:"pointer", fontSize:"14px", lineHeight:1, padding:"0 2px" }} title="Remove">×</button>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
