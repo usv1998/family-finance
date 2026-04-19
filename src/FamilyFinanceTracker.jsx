@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { TABS, EMPLOYER, LIVE_DEFAULTS } from "./lib/constants";
-import { isBiometricEnrolled, clearBiometricEnrollment } from "./lib/biometric";
+import { clearBiometricEnrollment } from "./lib/biometric";
 import { T } from "./lib/theme";
 import { getCurrentFY, getFYOptions, genId } from "./lib/formatters";
 import { loadData, saveData } from "./lib/storage";
@@ -67,16 +67,33 @@ export default function FamilyFinanceTracker() {
     supabase.auth.getSession().then(({ data:{ session } })=>{
       setUser(session?.user ?? null);
       userRef.current = session?.user ?? null;
-      // Lock on app open if session exists and biometric is enrolled
-      if (session?.user && isBiometricEnrolled()) setLocked(true);
+      // Always lock when a session is found — LockScreen handles enrollment if needed
+      if (session?.user) setLocked(true);
       setAuthReady(true);
     });
     const { data:{ subscription } } = supabase.auth.onAuthStateChange((_e, session)=>{
       setUser(session?.user ?? null);
       userRef.current = session?.user ?? null;
+      // Lock on new sign-in so LockScreen can prompt for fingerprint enrollment
+      if (_e === "SIGNED_IN") setLocked(true);
     });
     return ()=>subscription.unsubscribe();
   },[]);
+
+  // Lock when app comes back from background after >30 s
+  useEffect(()=>{
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (document.visibilityState === "visible" && hiddenAt > 0) {
+        if (Date.now() - hiddenAt > 30_000 && userRef.current) setLocked(true);
+        hiddenAt = 0;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  },[]); // userRef keeps this fresh without re-subscribing
 
   // Load data once auth is ready
   useEffect(()=>{
@@ -368,6 +385,7 @@ export default function FamilyFinanceTracker() {
   if(loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
   if(locked) return (
     <LockScreen
+      userEmail={user?.email}
       onUnlock={() => setLocked(false)}
       onSignOut={() => {
         clearBiometricEnrollment();
