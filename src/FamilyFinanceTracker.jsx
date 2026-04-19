@@ -6,6 +6,7 @@ import { T } from "./lib/theme";
 import { getCurrentFY, getFYOptions, genId } from "./lib/formatters";
 import { loadData, saveData } from "./lib/storage";
 import { SEED_DATA } from "./lib/seed";
+import { IMPORTED_TX } from "./lib/importedExpenses";
 import { fetchLiveData } from "./lib/marketData";
 
 import LiveStrip from "./components/LiveStrip";
@@ -18,7 +19,7 @@ import DailyExpensesTab from "./components/expenses/DailyExpensesTab";
 import PortfolioTab from "./components/portfolio/PortfolioTab";
 
 export default function FamilyFinanceTracker() {
-  const [activeTab,      setActiveTab]      = useState("income");
+  const [activeTab,      setActiveTab]      = useState("daily");
   const [fy,             setFY]             = useState(getCurrentFY());
   const [incomeData,     setIncomeData]     = useState({});
   const [rsuData,        setRsuData]        = useState({});
@@ -111,7 +112,22 @@ export default function FamilyFinanceTracker() {
         if(saved.rsuGrants)       setRsuGrants(saved.rsuGrants);
         else                      setRsuGrants(SEED_DATA.rsuGrants);
         if(saved.holdingsData)    setHoldingsData(saved.holdingsData);
-        if(saved.txData)          setTxData(saved.txData);
+        // Seed imported transactions once if txData is empty
+        if(saved.txData?.length > 0) {
+          setTxData(saved.txData);
+        } else {
+          setTxData(IMPORTED_TX);
+          persist(
+            saved.incomeData || SEED_DATA.incomeData,
+            saved.rsuData || SEED_DATA.rsuData,
+            saved.investmentsData || SEED_DATA.investmentsData,
+            saved.expensesData || SEED_DATA.expensesData,
+            saved.portfolioData || SEED_DATA.portfolioData,
+            saved.rsuGrants || SEED_DATA.rsuGrants,
+            saved.holdingsData || [],
+            IMPORTED_TX,
+          );
+        }
       } else {
         setIncomeData(SEED_DATA.incomeData);
         setRsuData(SEED_DATA.rsuData);
@@ -119,7 +135,8 @@ export default function FamilyFinanceTracker() {
         setExpensesData(SEED_DATA.expensesData);
         setPortfolioData(SEED_DATA.portfolioData);
         setRsuGrants(SEED_DATA.rsuGrants);
-        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData, rsuGrants:SEED_DATA.rsuGrants, holdingsData:[], txData:[] }, userRef.current?.id);
+        setTxData(IMPORTED_TX);
+        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData, rsuGrants:SEED_DATA.rsuGrants, holdingsData:[], txData:IMPORTED_TX }, userRef.current?.id);
       }
       setLoading(false);
     })();

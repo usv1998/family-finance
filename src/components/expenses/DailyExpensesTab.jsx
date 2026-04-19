@@ -5,15 +5,19 @@ import { PERSONS } from "../../lib/constants";
 
 // ── Category colours shared with ExpensesTab seed ─────────────────────────
 const DEFAULT_CATEGORIES = [
-  { id:"rent",      name:"Rent",       color:"#3B82F6" },
-  { id:"parents",   name:"Parents",    color:"#F59E0B" },
-  { id:"groceries", name:"Groceries",  color:"#22C55E" },
-  { id:"dining",    name:"Dining Out", color:"#14B8A6" },
-  { id:"shopping",  name:"Shopping",   color:"#A855F7" },
-  { id:"travel",    name:"Travel",     color:"#EC4899" },
-  { id:"utilities", name:"Utilities",  color:"#8B96AD" },
-  { id:"medical",   name:"Medical",    color:"#EF4444" },
-  { id:"misc",      name:"Misc",       color:"#5A6580" },
+  { id:"baby",          name:"Baby",           color:"#F472B6" },
+  { id:"food",          name:"Food",           color:"#14B8A6" },
+  { id:"gifts",         name:"Gifts for People", color:"#A855F7" },
+  { id:"grocery",       name:"Grocery",        color:"#22C55E" },
+  { id:"medical",       name:"Medical",        color:"#EF4444" },
+  { id:"non_recurring", name:"Non Recurring",  color:"#FB923C" },
+  { id:"parents",       name:"Parents",        color:"#F59E0B" },
+  { id:"rent",          name:"Rent",           color:"#3B82F6" },
+  { id:"shopping",      name:"Shopping",       color:"#8B5CF6" },
+  { id:"transport",     name:"Transportation", color:"#0EA5E9" },
+  { id:"utilities",     name:"Utilities",      color:"#8B96AD" },
+  { id:"vacation",      name:"Vacation",       color:"#EC4899" },
+  { id:"weekend_fun",   name:"Weekend Fun",    color:"#F97316" },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
