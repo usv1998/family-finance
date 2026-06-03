@@ -17,6 +17,7 @@ import InvestmentsTab from "./components/investments/InvestmentsTab";
 import ExpensesTab from "./components/expenses/ExpensesTab";
 import DailyExpensesTab from "./components/expenses/DailyExpensesTab";
 import PortfolioTab from "./components/portfolio/PortfolioTab";
+import RetirementTab from "./components/retirement/RetirementTab";
 
 export default function FamilyFinanceTracker() {
   const [activeTab,      setActiveTab]      = useState("daily");
@@ -29,6 +30,7 @@ export default function FamilyFinanceTracker() {
   const [rsuGrants,      setRsuGrants]      = useState([]);
   const [holdingsData,   setHoldingsData]   = useState([]);
   const [txData,         setTxData]         = useState([]);
+  const [retirementData, setRetirementData] = useState({});
   const [liveData,       setLiveData]       = useState(LIVE_DEFAULTS);
   const [refreshing,     setRefreshing]     = useState(false);
   const [loading,        setLoading]        = useState(true);
@@ -36,8 +38,10 @@ export default function FamilyFinanceTracker() {
   const [authReady,      setAuthReady]      = useState(!supabase); // true immediately if no supabase
   const [syncing,        setSyncing]        = useState(false);
   const [locked,         setLocked]         = useState(false);
-  const saveRef = useRef(null);
-  const userRef = useRef(null);
+  const saveRef     = useRef(null);
+  const userRef     = useRef(null);
+  const restoreRef  = useRef(null);
+  const [restoreMsg, setRestoreMsg] = useState(null); // { type: "ok"|"err", text }
 
   const refreshMarket = useCallback(async () => {
     setRefreshing(true);
@@ -112,6 +116,7 @@ export default function FamilyFinanceTracker() {
         if(saved.rsuGrants)       setRsuGrants(saved.rsuGrants);
         else                      setRsuGrants(SEED_DATA.rsuGrants);
         if(saved.holdingsData)    setHoldingsData(saved.holdingsData);
+        if(saved.retirementData)  setRetirementData(saved.retirementData);
         // Seed imported transactions once if txData is empty
         if(saved.txData?.length > 0) {
           setTxData(saved.txData);
@@ -126,6 +131,7 @@ export default function FamilyFinanceTracker() {
             saved.rsuGrants || SEED_DATA.rsuGrants,
             saved.holdingsData || [],
             IMPORTED_TX,
+            saved.retirementData || {},
           );
         }
       } else {
@@ -142,11 +148,11 @@ export default function FamilyFinanceTracker() {
     })();
   },[authReady]);
 
-  const persist = useCallback((iD,rD,invD,expD,portD,rG,hD,tD)=>{
+  const persist = useCallback((iD,rD,invD,expD,portD,rG,hD,tD,retD)=>{
     if(saveRef.current) clearTimeout(saveRef.current);
     setSyncing(true);
     saveRef.current = setTimeout(async()=>{
-      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD, txData:tD}, userRef.current?.id);
+      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD, txData:tD, retirementData:retD}, userRef.current?.id);
       setSyncing(false);
     }, 500);
   },[]);
@@ -166,7 +172,7 @@ export default function FamilyFinanceTracker() {
       }
     }
     setIncomeData(next);
-    persist(next, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData);
+    persist(next, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
   };
 
   const addRsuEvent = (event) => {
@@ -174,62 +180,62 @@ export default function FamilyFinanceTracker() {
     if(!next[event.fy]) next[event.fy]=[];
     next[event.fy]=[...next[event.fy],event];
     setRsuData(next);
-    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData);
+    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
   };
 
   const deleteRsuEvent = (id) => {
     const next={...rsuData};
     Object.keys(next).forEach(k=>{next[k]=next[k].filter(e=>e.id!==id);});
     setRsuData(next);
-    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData);
+    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
   };
 
   const addRsuGrant = (grant) => {
     const next = [...rsuGrants, grant];
     setRsuGrants(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next, holdingsData, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next, holdingsData, txData, retirementData);
   };
 
   const deleteRsuGrant = (id) => {
     const next = rsuGrants.filter(g => g.id !== id);
     setRsuGrants(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next, holdingsData, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, next, holdingsData, txData, retirementData);
   };
 
   const updateInvestments = (fyKey, data) => {
     const next={...investmentsData,[fyKey]:data};
     setInvestmentsData(next);
-    persist(incomeData, rsuData, next, expensesData, portfolioData, rsuGrants, holdingsData, txData);
+    persist(incomeData, rsuData, next, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
   };
 
   const updateExpenses = (fyKey, data) => {
     const next={...expensesData,[fyKey]:data};
     setExpensesData(next);
-    persist(incomeData, rsuData, investmentsData, next, portfolioData, rsuGrants, holdingsData, txData);
+    persist(incomeData, rsuData, investmentsData, next, portfolioData, rsuGrants, holdingsData, txData, retirementData);
   };
 
   const updatePortfolio = (fyKey, data) => {
     const next={...portfolioData,[fyKey]:data};
     setPortfolioData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, next, rsuGrants, holdingsData, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, next, rsuGrants, holdingsData, txData, retirementData);
   };
 
   const addHolding = (h) => {
     const next = [...holdingsData, h];
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData, retirementData);
   };
 
   const deleteHolding = (id) => {
     const next = holdingsData.filter(h => h.id !== id);
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData, retirementData);
   };
 
   const updateHolding = (id, changes) => {
     const next = holdingsData.map(h => h.id === id ? { ...h, ...changes } : h);
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData, retirementData);
   };
 
   const updateHoldingsBatch = (updates) => {
@@ -239,7 +245,7 @@ export default function FamilyFinanceTracker() {
       return u ? { ...h, ...u.changes } : h;
     });
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData, retirementData);
   };
 
   // Apply FIFO sells against a mutable lot array (sorted oldest-first).
@@ -295,7 +301,7 @@ export default function FamilyFinanceTracker() {
       next = [...next, ...survivors];
     }
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData, retirementData);
   };
 
   // Merge new MF SIP lots into existing, dedup by (date, units, navPrice), apply FIFO sells.
@@ -331,7 +337,7 @@ export default function FamilyFinanceTracker() {
       next = [...next, ...survivors];
     }
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData, retirementData);
   };
 
   // Bulk upsert: match by schemeCode (mf) + person → update; else add new.
@@ -348,7 +354,7 @@ export default function FamilyFinanceTracker() {
       }
     }
     setHoldingsData(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, next, txData, retirementData);
   };
 
   // ── Daily transaction handlers ──────────────────────────────────────────
@@ -357,21 +363,21 @@ export default function FamilyFinanceTracker() {
     setTxData(next);
     // Auto-roll: recompute expensesData actuals for the tx's FY month
     rollTxIntoExpenses(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next, retirementData);
   };
 
   const deleteTx = (id) => {
     const next = txData.filter(t => t.id !== id);
     setTxData(next);
     rollTxIntoExpenses(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next, retirementData);
   };
 
   const editTx = (tx) => {
     const next = txData.map(t => t.id === tx.id ? tx : t);
     setTxData(next);
     rollTxIntoExpenses(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next, retirementData);
   };
 
   // Recompute expensesData actuals from txList for all FY months.
@@ -405,6 +411,74 @@ export default function FamilyFinanceTracker() {
     });
   };
 
+  const exportBackup = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      appVersion: "v1.6",
+      data: { incomeData, rsuData, investmentsData, expensesData, portfolioData,
+              rsuGrants, holdingsData, txData, retirementData },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `duddukaasu-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRestoreFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        const d = parsed.data || parsed; // support both wrapped and raw formats
+        const required = ["incomeData","expensesData","holdingsData"];
+        if (!required.every(k => k in d)) throw new Error("Missing required fields — is this a valid backup?");
+        if (!window.confirm(
+          `Restore backup from ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString() : "unknown date"}?\n\n` +
+          `This will overwrite ALL current data. Your current data will be downloaded first as a safety backup.`
+        )) return;
+        // Auto-export current data before overwriting
+        exportBackup();
+        // Apply
+        if (d.incomeData)      setIncomeData(d.incomeData);
+        if (d.rsuData)         setRsuData(d.rsuData);
+        if (d.investmentsData) setInvestmentsData(d.investmentsData);
+        if (d.expensesData)    setExpensesData(d.expensesData);
+        if (d.portfolioData)   setPortfolioData(d.portfolioData);
+        if (d.rsuGrants)       setRsuGrants(d.rsuGrants);
+        if (d.holdingsData)    setHoldingsData(d.holdingsData);
+        if (d.txData)          setTxData(d.txData);
+        if (d.retirementData)  setRetirementData(d.retirementData);
+        persist(
+          d.incomeData      || incomeData,
+          d.rsuData         || rsuData,
+          d.investmentsData || investmentsData,
+          d.expensesData    || expensesData,
+          d.portfolioData   || portfolioData,
+          d.rsuGrants       || rsuGrants,
+          d.holdingsData    || holdingsData,
+          d.txData          || txData,
+          d.retirementData  || retirementData,
+        );
+        setRestoreMsg({ type: "ok", text: "Backup restored successfully." });
+      } catch (err) {
+        setRestoreMsg({ type: "err", text: `Restore failed: ${err.message}` });
+      }
+      setTimeout(() => setRestoreMsg(null), 5000);
+    };
+    reader.readAsText(file);
+  };
+
+  const updateRetirement = (data) => {
+    setRetirementData(data);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, data);
+  };
+
   if(!authReady || (supabase && !user)) return supabase && !user && authReady ? <LoginScreen/> : <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
   if(loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
   if(locked) return (
@@ -433,6 +507,8 @@ export default function FamilyFinanceTracker() {
         input[type=number]{-moz-appearance:textfield;}
         select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238B96AD' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px!important;}
         option{background:${T.card};color:${T.text};}
+        .btn-label-narrow{display:none;}
+        @media(max-width:860px){.btn-label-wide{display:none;}.btn-label-narrow{display:inline;}}
       `}</style>
 
       {/* Header */}
@@ -457,6 +533,17 @@ export default function FamilyFinanceTracker() {
               <select value={fy} onChange={e=>setFY(e.target.value)} style={{...selectStyle,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:T.accent}}>
                 {getFYOptions().map(f=><option key={f} value={f}>{f}</option>)}
               </select>
+              <div style={{ display:"flex", gap:"4px" }}>
+                <button onClick={exportBackup} title="Export backup — download all data as JSON" style={{ padding:"6px 10px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px 0 0 8px", color:T.textMuted, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+                  <span className="btn-label-wide">↓ Backup</span>
+                  <span className="btn-label-narrow">↓</span>
+                </button>
+                <button onClick={()=>restoreRef.current?.click()} title="Restore backup — load a previously exported JSON file" style={{ padding:"6px 10px", background:"transparent", border:`1px solid ${T.border}`, borderLeft:"none", borderRadius:"0 8px 8px 0", color:T.textMuted, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+                  <span className="btn-label-wide">↑ Restore</span>
+                  <span className="btn-label-narrow">↑</span>
+                </button>
+                <input ref={restoreRef} type="file" accept=".json,application/json" style={{ display:"none" }} onChange={handleRestoreFile} />
+              </div>
               {supabase && user && (
                 <button onClick={()=>supabase.auth.signOut()} style={{ padding:"7px 14px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textMuted, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
                   Sign Out
@@ -514,6 +601,14 @@ export default function FamilyFinanceTracker() {
             onEditTx={editTx}
           />
         )}
+        {activeTab==="retirement"&&(
+          <RetirementTab
+            retirementData={retirementData}
+            onUpdate={updateRetirement}
+            holdingsData={holdingsData}
+            liveData={liveData}
+          />
+        )}
         {activeTab==="portfolio"&&(
           <PortfolioTab
             holdingsData={holdingsData}
@@ -538,6 +633,16 @@ export default function FamilyFinanceTracker() {
         )}
       </div>
 
+      {restoreMsg && (
+        <div style={{ position:"fixed", bottom:"24px", left:"50%", transform:"translateX(-50%)",
+          background: restoreMsg.type === "ok" ? T.accentDim : "#7F1D1D",
+          border: `1px solid ${restoreMsg.type === "ok" ? T.accent : T.red}`,
+          color: restoreMsg.type === "ok" ? T.accent : "#FCA5A5",
+          padding:"10px 20px", borderRadius:"10px", fontSize:"13px", fontWeight:600,
+          zIndex:9999, boxShadow:"0 4px 24px rgba(0,0,0,0.5)", whiteSpace:"nowrap" }}>
+          {restoreMsg.type === "ok" ? "✓" : "✗"} {restoreMsg.text}
+        </div>
+      )}
       <div style={{ padding:"16px 20px", borderTop:`1px solid ${T.border}`, textAlign:"center", color:T.textMuted, fontSize:"11px" }}>
         DudduKaasu v1.6 · Portfolio: auto-derived + XIRR · Data synced across devices
       </div>
