@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useRef, useMemo } from "react";
 import { T } from "../../lib/theme";
 import { fmtCr } from "./engine";
 import { getDerivedHoldings } from "../../lib/derivedHoldings";
 import { getMonthlyHistory } from "../../lib/priceHistory";
 import { getCurrentValueINR, calcFDValue } from "../../lib/priceService";
-import { PERSONS } from "../../lib/constants";
 
 // ── Quarter definitions ────────────────────────────────────────────────────────
 const BASE_QUARTERS = [
@@ -47,14 +46,6 @@ function normaliseAssets(assets) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Convert FY string + month index (0=Apr…11=Mar) to "YYYY-MM-15" */
-function miToDateStr(fy, mi) {
-  const yr      = parseInt(fy.match(/FY(\d{4})/)?.[1] || "2026");
-  const calMonth = mi < 9 ? mi + 4 : mi - 8;
-  const calYear  = yr + (mi >= 9 ? 1 : 0);
-  return `${calYear}-${String(calMonth).padStart(2, "0")}-15`;
-}
-
 /**
  * Given all holdings + derived + price histories, compute corpus breakdown
  * as of a specific quarter date.
@@ -62,10 +53,8 @@ function miToDateStr(fy, mi) {
  * @param {string} qYM    "YYYY-MM"
  * @param {Array}  allHoldings  stored + derived combined
  * @param {Object} priceHistories  { [symbolOrSchemeCode]: { "YYYY-MM": price } }
- * @param {Object} incomeData
- * @param {Object} investmentsData
  */
-function computeHistoricalCorpus(qDate, qYM, allHoldings, priceHistories, incomeData, investmentsData) {
+function computeHistoricalCorpus(qDate, qYM, allHoldings, priceHistories) {
   const qTs = new Date(qDate).getTime();
   const corpus = Object.fromEntries(ASSET_CATS.map(c => [c.key, 0]));
   const usdinrMap = priceHistories["USDINR=X"] || {};
@@ -111,32 +100,27 @@ function computeHistoricalCorpus(qDate, qYM, allHoldings, priceHistories, income
         break;
       }
       case "epf":
-        corpus.epf += h.balance || 0;
-        break;
       case "ppf":
-        corpus.ppf += h.balance || 0;
+        // Handled below via linear interpolation — skip raw balance here
         break;
       default:
         corpus.other += h.costBasisINR || h.balance || 0;
     }
   }
 
-  // Historical EPF: opening + contributions up to qDate (for both persons)
-  for (const person of PERSONS) {
-    let opening = 0;
-    for (const fy of Object.keys(investmentsData || {}).filter(k => k.startsWith("FY")).sort()) {
-      const val = investmentsData[fy]?.epfOpening?.[person];
-      if (val != null) { opening = val; break; }
-    }
-    let contrib = 0;
-    for (const fy of Object.keys(incomeData || {}).filter(k => k.startsWith("FY"))) {
-      for (const [miStr, d] of Object.entries(incomeData[fy]?.[person] || {})) {
-        const dStr = miToDateStr(fy, Number(miStr));
-        if (new Date(dStr).getTime() <= qTs) contrib += Number(d.epf || 0);
-      }
-    }
-    corpus.epf += opening + contrib;
+  // EPF + PPF: linear interpolation from 0 → current balance across Apr 2024–Apr 2026.
+  // Assumption: equal monthly contributions each month to reach today's corpus.
+  const APR_2024_MS = new Date("2024-04-01").getTime();
+  const APR_2026_MS = new Date("2026-04-01").getTime();
+  const fraction    = Math.max(0, Math.min((qTs - APR_2024_MS) / (APR_2026_MS - APR_2024_MS), 1));
+
+  let currentEPF = 0, currentPPF = 0;
+  for (const h of allHoldings) {
+    if (h.type === "epf") currentEPF += h.balance || 0;
+    if (h.type === "ppf") currentPPF += h.balance || 0;
   }
+  corpus.epf = Math.round(currentEPF * fraction);
+  corpus.ppf = Math.round(currentPPF * fraction);
 
   // Round everything
   ASSET_CATS.forEach(c => { corpus[c.key] = Math.round(corpus[c.key]); });
@@ -247,7 +231,7 @@ function QuarterCard({ q, snapshot, onSave, isCurrent, allHoldings, incomeData, 
         if (r.status === "fulfilled") priceHistories[r.value[0]] = r.value[1];
       }
 
-      const corpus = computeHistoricalCorpus(q.date, q.qYM, allHoldings, priceHistories, incomeData, investmentsData);
+      const corpus = computeHistoricalCorpus(q.date, q.qYM, allHoldings, priceHistories);
       setForm(prev => ({
         ...prev,
         ...Object.fromEntries(ASSET_CATS.map(c => [c.key, corpus[c.key] > 0 ? String(corpus[c.key]) : prev[c.key]])),
