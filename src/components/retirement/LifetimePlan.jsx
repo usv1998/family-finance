@@ -299,8 +299,8 @@ export default function LifetimePlan({ plan, onUpdatePlan }) {
               { label: "Target Corpus at 45", value: fmtCr(result.target_corpus), featured: true },
               { label: "Organic Corpus at 45", value: fmtCr(result.organic_corpus_at_retirement) },
               { label: "First-Year Retirement SIP", value: result.is_overfunded ? "₹0 (over-funded)" : fmtCr(result.retirement_sip_year_1) + "/mo" },
-              { label: "Avg Min Salary Yr 1–6",     value: fmtCr(result.summary.avg_min_salary_years_1_6) + "/mo" },
-              { label: "Avg Min Salary Post-Loan",  value: fmtCr(result.summary.avg_min_salary_after_loan) + "/mo" },
+              { label: "Child Education FV Target", value: fmtCr(result.child_sip_fv_target), sub: `in ${plan.child.years_until_college}yr at ${((plan.child.education_inflation ?? 0.08)*100).toFixed(0)}% inflation` },
+              { label: "Child SIP Year 1 (step-up)", value: fmtCr(result.child_sip_year_1) + "/mo", sub: `+${((plan.child.sip_growth ?? 0.05)*100).toFixed(0)}%/yr` },
               { label: "Peak Need", value: `${fmtCr(result.summary.peak_min_salary)}/mo at age ${result.summary.peak_age}` },
             ].map((c, i) => (
               <div key={i} style={{
@@ -310,6 +310,7 @@ export default function LifetimePlan({ plan, onUpdatePlan }) {
               }}>
                 <div style={{ fontSize: "11px", color: T.textMuted, marginBottom: "4px" }}>{c.label}</div>
                 <div style={{ fontSize: "15px", fontWeight: 800, color: c.featured ? T.accent : T.text, fontFamily: "'JetBrains Mono',monospace" }}>{c.value}</div>
+                {c.sub && <div style={{ fontSize: "10px", color: T.textMuted, marginTop: "3px" }}>{c.sub}</div>}
               </div>
             ))}
           </div>
@@ -383,12 +384,17 @@ export default function LifetimePlan({ plan, onUpdatePlan }) {
           </div>
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "20px" }}>
             <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "14px", color: T.text }}>Child Education</div>
-            <SliderRow label="Education Target" value={plan.child.education_target} min={LAKH * 50} max={5 * CRORE} step={LAKH * 10}
-              fmt={fmtCr} onChange={v => set("child", "education_target", v)} />
-            <SliderRow label="Years to College" value={plan.child.years_until_college} min={3} max={22} step={1}
+            <SliderRow label="Education Goal (present value today)" value={plan.child.education_target_pv ?? plan.child.education_target ?? CRORE}
+              min={LAKH * 10} max={5 * CRORE} step={LAKH * 5}
+              fmt={fmtCr} onChange={v => set("child", "education_target_pv", v)} />
+            <SliderRow label="Education Inflation" value={plan.child.education_inflation ?? 0.08} min={0.04} max={0.15} step={0.005}
+              fmt={pctFmt} onChange={v => set("child", "education_inflation", v)} />
+            <SliderRow label="Years to College" value={plan.child.years_until_college} min={1} max={22} step={1}
               fmt={yrFmt} onChange={v => set("child", "years_until_college", v)} />
-            <SliderRow label="Expected Return" value={plan.child.expected_return} min={0.06} max={0.18} step={0.005}
+            <SliderRow label="Expected Return (equity)" value={plan.child.expected_return} min={0.06} max={0.18} step={0.005}
               fmt={pctFmt} onChange={v => set("child", "expected_return", v)} />
+            <SliderRow label="SIP Annual Step-up" value={plan.child.sip_growth ?? 0.05} min={0.0} max={0.15} step={0.005}
+              fmt={pctFmt} onChange={v => set("child", "sip_growth", v)} />
           </div>
         </div>
       )}

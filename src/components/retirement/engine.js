@@ -29,7 +29,13 @@ export const DEFAULT_ASSUMPTIONS = {
   starting_position: { liquid_investments: 50 * LAKH, epf_ppf: 5 * LAKH },
   income: { salary_monthly: 2.5 * LAKH, salary_growth: 0.10, rsu_annual_post_tax: 0 },
   expenses: { monthly: 1.5 * LAKH, growth: 0.07 },
-  child: { education_target: 2 * CRORE, years_until_college: 18, expected_return: 0.10 },
+  child: {
+    education_target_pv: 1 * CRORE,   // TODAY's value (present value)
+    education_inflation: 0.08,         // Education inflation rate (default 8%)
+    years_until_college: 18,
+    expected_return: 0.10,
+    sip_growth: 0.05,                  // Annual step-up rate for child SIP
+  },
   retirement: {
     pre_retirement_return: 0.12,
     sip_growth: 0.05,
@@ -149,20 +155,46 @@ export function computeApproaches(a, yearN = 10) {
   return { approaches: results, winner_key: winner?.key, baseline_net_worth: results[0]?.at_year_n.net_worth };
 }
 
-// ── Child SIP ────────────────────────────────────────────────────────────────
+// ── Child SIP (step-up, inflation-adjusted) ───────────────────────────────────
 export function computeChildSip(a) {
-  const { education_target, years_until_college, expected_return } = a.child;
-  const r = expected_return / 12;
-  const n = years_until_college * 12;
-  if (n <= 0) return 0;
-  const pmt = r > 0 ? education_target * r / (Math.pow(1 + r, n) - 1) : education_target / n;
-  return pmt;
+  const { education_target_pv, education_inflation, years_until_college, expected_return, sip_growth } = a.child;
+
+  // Backward compat: old plans may have education_target instead of education_target_pv
+  const pv = education_target_pv ?? a.child.education_target ?? CRORE;
+
+  const N = years_until_college;
+  if (N <= 0) return { sip_year_1: 0, sip_growth: 0, fv_target: pv };
+
+  // Inflate present value → future value at the time of college
+  const fv_target = pv * Math.pow(1 + education_inflation, N);
+
+  const r = expected_return;  // annual
+  const g = sip_growth;       // annual step-up
+
+  // Growing annuity FV formula: FV = SIP_1 * [(1+r)^N - (1+g)^N] / (r - g)
+  // → SIP_1 = FV * (r - g) / [(1+r)^N - (1+g)^N]
+  let sip_year_1;
+  if (Math.abs(r - g) < 1e-9) {
+    // r ≈ g edge case: FV = SIP_1 * N * (1+r)^(N-1)
+    sip_year_1 = fv_target / (N * Math.pow(1 + r, N - 1));
+  } else {
+    const denom = Math.pow(1 + r, N) - Math.pow(1 + g, N);
+    sip_year_1 = fv_target * (r - g) / denom;
+  }
+
+  // Convert annual SIP to monthly
+  sip_year_1 = sip_year_1 / 12;
+
+  return { sip_year_1: Math.max(0, sip_year_1), sip_growth: g, fv_target };
 }
 
 // ── Retirement / Lifetime plan ────────────────────────────────────────────────
 export function computeLifetimePlan(a, scenario_key) {
   const hl = computeHomeLoan(a);
-  const child_sip = computeChildSip(a);
+  const childResult = computeChildSip(a);
+  const child_sip_year_1 = childResult.sip_year_1;
+  const child_sip_g      = childResult.sip_growth;
+  const child_years      = a.child.years_until_college;
   const target_corpus = a.retirement.targets[scenario_key] || a.retirement.targets["1L"];
 
   const N = a.profile.retirement_age - a.profile.current_age;
@@ -194,13 +226,15 @@ export function computeLifetimePlan(a, scenario_key) {
     const emi_monthly    = (hl && i < emi_active_until) ? hl.monthly_emi : 0;
     const prepay_monthly = (hl && i < emi_active_until && a.home.annual_prepayment > 0) ? a.home.annual_prepayment / 12 : 0;
     const ret_sip        = retirement_sip_year_1 * Math.pow(1 + g, i);
+    // Child SIP: step-up each year, stops once college is reached
+    const child_sip      = i < child_years ? child_sip_year_1 * Math.pow(1 + child_sip_g, i) : 0;
     const total_outflow  = exp_monthly + emi_monthly + prepay_monthly + child_sip + ret_sip;
     const proj_salary    = a.income.salary_monthly * Math.pow(1 + a.income.salary_growth, i);
     const rsu_monthly    = a.income.rsu_annual_post_tax / 12;
     const gap            = Math.max(0, total_outflow - proj_salary);
 
     year_data.push({ age, exp_monthly, emi_monthly, prepay_monthly,
-      child_sip_monthly: child_sip, retirement_sip_monthly: ret_sip,
+      child_sip_monthly: child_sip, retirement_sip_monthly: ret_sip, child_active: i < child_years,
       total_outflow_monthly: total_outflow, projected_salary_monthly: proj_salary,
       rsu_monthly, gap_monthly: gap });
   }
@@ -223,6 +257,8 @@ export function computeLifetimePlan(a, scenario_key) {
   return {
     scenario_key,
     retirement_sip_year_1,
+    child_sip_year_1,
+    child_sip_fv_target: childResult.fv_target,
     organic_corpus_at_retirement: organic,
     target_corpus,
     is_overfunded: needed <= 0,
