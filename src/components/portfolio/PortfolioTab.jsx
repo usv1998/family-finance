@@ -131,15 +131,17 @@ const inpS = {
   width:"100%", boxSizing:"border-box", fontFamily:"inherit",
 };
 
-function AddLotInline({ type, symbol, person, onAdd, onClose }) {
-  const [qty,      setQty]      = useState("");
+function AddLotInline({ type, symbol, schemeCode, name, person, onAdd, onClose }) {
+  const [qty,      setQty]      = useState(""); // shares (stocks) or units (MF)
   const [date,     setDate]     = useState("");
-  const [priceUSD, setPriceUSD] = useState("");
+  const [price,    setPrice]    = useState(""); // USD for us_stock, ₹/unit for in_stock, NAV for mf
   const [usdInr,   setUsdInr]   = useState("");
   const [costINR,  setCostINR]  = useState("");
   const [fxFetch,  setFxFetch]  = useState(false);
 
   const isUS = type === "us_stock";
+  const isMF = type === "mf";
+  const isIN = type === "in_stock";
 
   const handleDate = async (d) => {
     setDate(d);
@@ -150,28 +152,46 @@ function AddLotInline({ type, symbol, person, onAdd, onClose }) {
     setFxFetch(false);
   };
 
-  // Auto-compute INR cost when price+qty+usdInr are all filled (US stocks)
-  const handlePriceOrQty = (newPriceUSD, newQty) => {
-    const p = parseFloat(newPriceUSD || priceUSD);
-    const q = parseFloat(newQty || qty);
-    const r = parseFloat(usdInr);
-    if (p > 0 && q > 0 && r > 0) setCostINR(Math.round(p * q * r).toString());
+  // Auto-compute cost basis as you type
+  const recompute = (newQty, newPrice, newUsdInr) => {
+    const q = parseFloat(newQty  ?? qty);
+    const p = parseFloat(newPrice ?? price);
+    if (isUS) {
+      const r = parseFloat(newUsdInr ?? usdInr);
+      if (q > 0 && p > 0 && r > 0) setCostINR(Math.round(q * p * r).toString());
+    } else if (isIN || isMF) {
+      if (q > 0 && p > 0) setCostINR(Math.round(q * p).toString());
+    }
   };
 
   const handleSubmit = () => {
-    if (!qty) return;
+    if (isMF && !qty) return;
+    if (!isMF && !qty) return;
+
     const h = {
-      id: genId(), type, person, symbol, name: symbol,
-      quantity: Number(qty),
-      costBasisINR: Number(costINR) || 0,
+      id: genId(), type, person,
       addedAt: new Date().toISOString(),
+      costBasisINR: Number(costINR) || 0,
     };
+
     if (date) h.acquisitionDate = date;
-    if (priceUSD) {
-      h.acquisitionPrice    = Number(priceUSD);
-      h.acquisitionCurrency = isUS ? "USD" : "INR";
+
+    if (isMF) {
+      h.schemeCode = schemeCode;
+      h.name       = name;
+      h.units      = Number(qty);
+      if (price) h.acquisitionPrice = Number(price); // NAV at purchase
+    } else {
+      h.symbol = symbol;
+      h.name   = name || symbol;
+      h.quantity = Number(qty);
+      if (price) {
+        h.acquisitionPrice    = Number(price);
+        h.acquisitionCurrency = isUS ? "USD" : "INR";
+      }
+      if (isUS && usdInr) h.acquisitionUSDINR = Number(usdInr);
     }
-    if (isUS && usdInr) h.acquisitionUSDINR = Number(usdInr);
+
     onAdd(h);
     onClose();
   };
@@ -180,36 +200,44 @@ function AddLotInline({ type, symbol, person, onAdd, onClose }) {
     <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700, marginBottom:"3px" }}>{t}</div>
   );
 
+  // Grid columns: US=4, IN=3, MF=3
+  const cols = isUS ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr";
+  const pricePlaceholder = isUS ? "420" : isMF ? "NAV e.g. 58.23" : "₹ per share";
+  const priceLabel = isUS ? "PRICE (USD)" : isMF ? "NAV AT PURCHASE (₹)" : "PRICE PER SHARE (₹)";
+  const qtyLabel = isMF ? "UNITS" : "QUANTITY (SHARES)";
+
   return (
     <div style={{ background:"#1a2035", borderRadius:"10px", border:`1px solid ${T.accent}44`, padding:"14px 16px", margin:"0 4px 4px" }}>
-      <div style={{ fontSize:"12px", fontWeight:700, color:T.accent, marginBottom:"10px" }}>+ Add New Lot — {symbol}</div>
-      <div style={{ display:"grid", gridTemplateColumns: isUS ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap:"8px", marginBottom:"10px" }}>
+      <div style={{ fontSize:"12px", fontWeight:700, color:T.accent, marginBottom:"10px" }}>
+        + Add New Lot — {isMF ? name : symbol}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:cols, gap:"8px", marginBottom:"10px" }}>
         <div>
-          {lbl("QUANTITY")}
-          <input type="number" style={inpS} placeholder="10" value={qty}
-            onChange={e => { setQty(e.target.value); handlePriceOrQty(null, e.target.value); }}/>
+          {lbl(qtyLabel)}
+          <input type="number" style={inpS} placeholder={isMF ? "1234.567" : "10"} value={qty}
+            onChange={e => { setQty(e.target.value); recompute(e.target.value, null, null); }}/>
         </div>
         <div>
           {lbl("PURCHASE DATE")}
           <input type="date" style={inpS} value={date} onChange={e => handleDate(e.target.value)}/>
         </div>
         <div>
-          {lbl(isUS ? "PRICE (USD)" : "PRICE (₹)")}
-          <input type="number" style={inpS} placeholder={isUS ? "420" : "1500"} value={priceUSD}
-            onChange={e => { setPriceUSD(e.target.value); handlePriceOrQty(e.target.value, null); }}/>
+          {lbl(priceLabel)}
+          <input type="number" style={inpS} placeholder={pricePlaceholder} value={price}
+            onChange={e => { setPrice(e.target.value); recompute(null, e.target.value, null); }}/>
         </div>
         {isUS && (
           <div style={{ position:"relative" }}>
             {lbl("USD/INR")}
             <input type="number" style={inpS} placeholder="84.5" value={usdInr}
-              onChange={e => { setUsdInr(e.target.value); handlePriceOrQty(null, null); }}/>
+              onChange={e => { setUsdInr(e.target.value); recompute(null, null, e.target.value); }}/>
             {fxFetch && <span style={{ position:"absolute", right:"8px", top:"26px", fontSize:"9px", color:T.textMuted }}>…</span>}
           </div>
         )}
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:"8px", alignItems:"flex-end" }}>
         <div>
-          {lbl("TOTAL COST BASIS (₹)")}
+          {lbl("TOTAL INVESTED (₹)")}
           <input type="number" style={inpS} placeholder="350000" value={costINR}
             onChange={e => setCostINR(e.target.value)}/>
         </div>
@@ -524,7 +552,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
   const { label, holdings } = modal;
   // Infer type/person/symbol from first non-derived holding (or any holding)
   const ref = holdings.find(h => !h.derived) || holdings[0];
-  const canAddLot = ref && (ref.type === "us_stock" || ref.type === "in_stock");
+  const canAddLot = ref && (ref.type === "us_stock" || ref.type === "in_stock" || ref.type === "mf");
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000,
@@ -552,7 +580,9 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
         <div style={{ overflowY:"auto", padding:"14px", display:"flex", flexDirection:"column", gap:"10px" }}>
           {showAddLot && (
             <AddLotInline
-              type={ref.type} symbol={ref.symbol} person={ref.person}
+              type={ref.type} symbol={ref.symbol}
+              schemeCode={ref.schemeCode} name={ref.name}
+              person={ref.person}
               onAdd={onAdd}
               onClose={() => setShowAddLot(false)}/>
           )}
