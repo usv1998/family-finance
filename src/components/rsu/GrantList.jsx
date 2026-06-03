@@ -29,9 +29,11 @@ export default function GrantList({ grants, rsuData, liveData, onDelete }) {
         const stockCol   = grant.stock === "MSFT" ? T.blue : T.akshaya;
         const livePrice  = liveData[grant.stock] || 0;
         const usdInr     = liveData.USDINR || 85;
+        const taxPct     = grant.tax_pct ?? 35;
+        const netFactor  = 1 - taxPct / 100;
         const unvested   = schedule.filter(v => !isConfirmed(v.vest_date, grant.person, grant.stock, rsuData))
                                    .reduce((s,v)=>s+v.units,0);
-        const projVal    = unvested * livePrice * usdInr;
+        const projVal    = Math.round(unvested * netFactor) * livePrice * usdInr;
 
         return (
           <div key={grant.id} style={{ background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`, overflow:"hidden" }}>
@@ -59,6 +61,9 @@ export default function GrantList({ grants, rsuData, liveData, onDelete }) {
                 {remaining > 0 && (
                   <span style={{ fontSize:"11px", color:T.purple, fontWeight:600 }}>
                     {remaining} upcoming · {fmtINR(projVal)} projected
+                    <span style={{ fontSize:"10px", color:T.textMuted, fontWeight:400, marginLeft:"4px" }}>
+                      (post-{taxPct}% tax)
+                    </span>
                   </span>
                 )}
               </div>
@@ -88,7 +93,9 @@ export default function GrantList({ grants, rsuData, liveData, onDelete }) {
                       const past      = new Date(v.vest_date) < new Date();
                       const confirmed = isConfirmed(v.vest_date, grant.person, grant.stock, rsuData);
                       const actual    = getConfirmedEvent(v.vest_date, grant.person, grant.stock, rsuData);
-                      const netUnits  = actual ? actual.units_vested - (actual.tax_withheld_units||0) : null;
+                      const netUnits  = actual
+                        ? actual.units_vested - (actual.tax_withheld_units||0)
+                        : Math.round(v.units * netFactor); // projected post-tax
                       const netINR    = actual ? netUnits * actual.stock_price_usd * actual.usd_inr_rate : null;
 
                       return (
@@ -112,11 +119,16 @@ export default function GrantList({ grants, rsuData, liveData, onDelete }) {
                           <td style={{ padding:"9px 14px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.blue }}>
                             {actual ? fmtUSD(actual.stock_price_usd) : <span style={{ color:T.textMuted }}>—</span>}
                           </td>
-                          <td style={{ padding:"9px 14px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.text }}>
-                            {netUnits ?? <span style={{ color:T.textMuted }}>—</span>}
+                          <td style={{ padding:"9px 14px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color: confirmed ? T.text : T.textMuted }}>
+                            {netUnits}
+                            {!confirmed && <span style={{ fontSize:"9px", marginLeft:"3px", color:T.textMuted }}>est.</span>}
                           </td>
                           <td style={{ padding:"9px 14px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:confirmed?700:400 }}>
-                            {netINR !== null ? fmtINR(netINR) : <span style={{ color:T.textMuted }}>—</span>}
+                            {netINR !== null
+                              ? fmtINR(netINR)
+                              : livePrice > 0
+                                ? <span style={{ color:T.textMuted }}>{fmtINR(netUnits * livePrice * usdInr)}</span>
+                                : <span style={{ color:T.textMuted }}>—</span>}
                           </td>
                         </tr>
                       );

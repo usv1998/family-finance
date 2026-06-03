@@ -19,6 +19,62 @@ export async function fetchStockPrice(symbol) {
   } catch { return null; }
 }
 
+// Fetch stock price + 1D change percent for a symbol.
+// Returns { price, changePct } or null.
+export async function fetchStockPriceWithChange(symbol) {
+  try {
+    const url  = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=5d`);
+    const res  = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const meta = json?.chart?.result?.[0]?.meta;
+    if (!meta) return null;
+    const price     = meta.regularMarketPrice ?? null;
+    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
+    const changePct = price != null && prevClose != null && prevClose > 0
+      ? (price - prevClose) / prevClose * 100
+      : null;
+    return { price, changePct };
+  } catch { return null; }
+}
+
+// Fetch prices + 1D change for all stock+MF holdings.
+// Returns { priceMap, changeMap } where changeMap: { symbol: changePct% }
+export async function fetchAllPricesWithChange(holdings) {
+  const stockSymbols = [...new Set(
+    holdings
+      .filter(h => h.type === "us_stock" || h.type === "in_stock")
+      .map(h => {
+        if (h.type === "in_stock" && h.symbol && !/\.(NS|BO)$/i.test(h.symbol)) {
+          return h.symbol + ".NS";
+        }
+        return h.symbol;
+      }).filter(Boolean)
+  )];
+  const mfCodes = [...new Set(
+    holdings.filter(h => h.type === "mf").map(h => h.schemeCode).filter(Boolean)
+  )];
+
+  const [stockResults, mfResults] = await Promise.all([
+    Promise.allSettled(stockSymbols.map(s =>
+      fetchStockPriceWithChange(s).then(r => ({ k: s, price: r?.price, changePct: r?.changePct }))
+    )),
+    Promise.allSettled(mfCodes.map(c =>
+      fetchMFNav(c).then(n => ({ k: c, price: n, changePct: null }))
+    )),
+  ]);
+
+  const priceMap  = {};
+  const changeMap = {};
+  for (const r of [...stockResults, ...mfResults]) {
+    if (r.status === "fulfilled" && r.value.price != null) {
+      priceMap[r.value.k]  = r.value.price;
+      if (r.value.changePct != null) changeMap[r.value.k] = r.value.changePct;
+    }
+  }
+  return { priceMap, changeMap };
+}
+
 // Fetch latest NAV for an AMFI scheme code.
 export async function fetchMFNav(schemeCode) {
   try {

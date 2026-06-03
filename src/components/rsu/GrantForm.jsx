@@ -6,6 +6,7 @@ import { PERSONS, PERSON_STOCK } from "../../lib/constants";
 const BLANK = {
   person:"Selva", stock:"MSFT", grant_date:"", grant_id:"", total_units:"",
   vesting_type:"quarterly", vesting_years:"4", first_vest_date:"",
+  tax_pct:"35",
   notes:"",
   // custom schedule rows (vesting_type === "custom")
   vesting_schedule:[{ vest_date:"", units:"" }],
@@ -43,6 +44,7 @@ export default function GrantForm({ onAdd }) {
       vesting_schedule: form.vesting_type === "custom"
         ? form.vesting_schedule.map(r => ({ vest_date: r.vest_date, units: Number(r.units)||0 }))
         : [],
+      tax_pct: Number(form.tax_pct) || 35,
       notes: form.notes,
     };
     onAdd(grant);
@@ -112,6 +114,10 @@ export default function GrantForm({ onAdd }) {
                 <input type="date" value={form.first_vest_date} onChange={e=>upd("first_vest_date",e.target.value)} style={inp}/>
               </div>
             </>}
+            <div>
+              <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, display:"block", marginBottom:"4px" }}>TAX WITHHOLDING %</label>
+              <input type="number" min="0" max="50" value={form.tax_pct} onChange={e=>upd("tax_pct",e.target.value)} placeholder="35" style={inp}/>
+            </div>
             <div>
               <label style={{ fontSize:"11px", color:T.textMuted, fontWeight:700, display:"block", marginBottom:"4px" }}>NOTES</label>
               <input value={form.notes} onChange={e=>upd("notes",e.target.value)} placeholder="Optional" style={inp}/>

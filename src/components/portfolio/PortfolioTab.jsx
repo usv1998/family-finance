@@ -4,8 +4,10 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
 import { T } from "../../lib/theme";
 import { getDerivedHoldings } from "../../lib/derivedHoldings";
 import { portfolioXIRR } from "../../lib/xirr";
-import { fetchAllPrices, getCurrentValueINR } from "../../lib/priceService";
+import { fetchAllPricesWithChange, fetchAllPrices, getCurrentValueINR } from "../../lib/priceService";
+import { fetchHistoricalUSDINR } from "../../lib/historicalFX";
 import AddHoldingForm from "./AddHoldingForm";
+import { genId } from "../../lib/formatters";
 import HoldingCard from "./HoldingCard";
 import CasImportModal from "./CasImportModal";
 import TradebookImportModal from "./TradebookImportModal";
@@ -116,6 +118,111 @@ function TypeBarTip({ active, payload, label, typeData, totalNW }) {
         <span style={{ fontFamily:"monospace", fontWeight:700, color:gc }}>
           {entry.gainPct>=0?"+":""}{entry.gainPct.toFixed(1)}%
         </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Add Lot Inline (inside StockModal) ───────────────────────────────────────
+
+const inpS = {
+  padding:"7px 10px", background:"#1a2035", border:`1px solid ${T.border}`,
+  borderRadius:"7px", color:T.text, fontSize:"12px", outline:"none",
+  width:"100%", boxSizing:"border-box", fontFamily:"inherit",
+};
+
+function AddLotInline({ type, symbol, person, onAdd, onClose }) {
+  const [qty,      setQty]      = useState("");
+  const [date,     setDate]     = useState("");
+  const [priceUSD, setPriceUSD] = useState("");
+  const [usdInr,   setUsdInr]   = useState("");
+  const [costINR,  setCostINR]  = useState("");
+  const [fxFetch,  setFxFetch]  = useState(false);
+
+  const isUS = type === "us_stock";
+
+  const handleDate = async (d) => {
+    setDate(d);
+    if (!d || !isUS) return;
+    setFxFetch(true);
+    const rate = await fetchHistoricalUSDINR(d);
+    if (rate) setUsdInr(rate.toFixed(2));
+    setFxFetch(false);
+  };
+
+  // Auto-compute INR cost when price+qty+usdInr are all filled (US stocks)
+  const handlePriceOrQty = (newPriceUSD, newQty) => {
+    const p = parseFloat(newPriceUSD || priceUSD);
+    const q = parseFloat(newQty || qty);
+    const r = parseFloat(usdInr);
+    if (p > 0 && q > 0 && r > 0) setCostINR(Math.round(p * q * r).toString());
+  };
+
+  const handleSubmit = () => {
+    if (!qty) return;
+    const h = {
+      id: genId(), type, person, symbol, name: symbol,
+      quantity: Number(qty),
+      costBasisINR: Number(costINR) || 0,
+      addedAt: new Date().toISOString(),
+    };
+    if (date) h.acquisitionDate = date;
+    if (priceUSD) {
+      h.acquisitionPrice    = Number(priceUSD);
+      h.acquisitionCurrency = isUS ? "USD" : "INR";
+    }
+    if (isUS && usdInr) h.acquisitionUSDINR = Number(usdInr);
+    onAdd(h);
+    onClose();
+  };
+
+  const lbl = (t) => (
+    <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700, marginBottom:"3px" }}>{t}</div>
+  );
+
+  return (
+    <div style={{ background:"#1a2035", borderRadius:"10px", border:`1px solid ${T.accent}44`, padding:"14px 16px", margin:"0 4px 4px" }}>
+      <div style={{ fontSize:"12px", fontWeight:700, color:T.accent, marginBottom:"10px" }}>+ Add New Lot — {symbol}</div>
+      <div style={{ display:"grid", gridTemplateColumns: isUS ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap:"8px", marginBottom:"10px" }}>
+        <div>
+          {lbl("QUANTITY")}
+          <input type="number" style={inpS} placeholder="10" value={qty}
+            onChange={e => { setQty(e.target.value); handlePriceOrQty(null, e.target.value); }}/>
+        </div>
+        <div>
+          {lbl("PURCHASE DATE")}
+          <input type="date" style={inpS} value={date} onChange={e => handleDate(e.target.value)}/>
+        </div>
+        <div>
+          {lbl(isUS ? "PRICE (USD)" : "PRICE (₹)")}
+          <input type="number" style={inpS} placeholder={isUS ? "420" : "1500"} value={priceUSD}
+            onChange={e => { setPriceUSD(e.target.value); handlePriceOrQty(e.target.value, null); }}/>
+        </div>
+        {isUS && (
+          <div style={{ position:"relative" }}>
+            {lbl("USD/INR")}
+            <input type="number" style={inpS} placeholder="84.5" value={usdInr}
+              onChange={e => { setUsdInr(e.target.value); handlePriceOrQty(null, null); }}/>
+            {fxFetch && <span style={{ position:"absolute", right:"8px", top:"26px", fontSize:"9px", color:T.textMuted }}>…</span>}
+          </div>
+        )}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:"8px", alignItems:"flex-end" }}>
+        <div>
+          {lbl("TOTAL COST BASIS (₹)")}
+          <input type="number" style={inpS} placeholder="350000" value={costINR}
+            onChange={e => setCostINR(e.target.value)}/>
+        </div>
+        <button onClick={handleSubmit}
+          style={{ padding:"7px 16px", background:T.accent, border:"none", borderRadius:"7px",
+            color:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+          Add Lot
+        </button>
+        <button onClick={onClose}
+          style={{ padding:"7px 10px", background:"transparent", border:`1px solid ${T.border}`,
+            borderRadius:"7px", color:T.textDim, fontSize:"12px", cursor:"pointer" }}>
+          ✕
+        </button>
       </div>
     </div>
   );
@@ -411,9 +518,14 @@ function OverviewView({ enriched, totalNW }) {
 
 const fmtINR = n => n == null ? "—" : `₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
 
-function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived, onClose }) {
+function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived, onAdd, onClose }) {
+  const [showAddLot, setShowAddLot] = useState(false);
   if (!modal) return null;
   const { label, holdings } = modal;
+  // Infer type/person/symbol from first non-derived holding (or any holding)
+  const ref = holdings.find(h => !h.derived) || holdings[0];
+  const canAddLot = ref && (ref.type === "us_stock" || ref.type === "in_stock");
+
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000,
       display:"flex", alignItems:"center", justifyContent:"center", padding:"20px" }}>
@@ -423,10 +535,27 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
         <div style={{ padding:"16px 20px", borderBottom:`1px solid ${T.border}`,
           display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <span style={{ fontSize:"15px", fontWeight:700, color:T.text }}>{label}</span>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:T.textMuted,
-            fontSize:"22px", cursor:"pointer", lineHeight:1, padding:"0 4px" }}>×</button>
+          <div style={{ display:"flex", gap:"8px", alignItems:"center" }}>
+            {canAddLot && (
+              <button onClick={() => setShowAddLot(v => !v)}
+                style={{ padding:"5px 12px", background: showAddLot ? T.accentBg : T.card,
+                  border:`1px solid ${showAddLot ? T.accent : T.border}`,
+                  borderRadius:"7px", color: showAddLot ? T.accent : T.textDim,
+                  fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+                {showAddLot ? "✕ Cancel" : "+ Add Lot"}
+              </button>
+            )}
+            <button onClick={onClose} style={{ background:"none", border:"none", color:T.textMuted,
+              fontSize:"22px", cursor:"pointer", lineHeight:1, padding:"0 4px" }}>×</button>
+          </div>
         </div>
         <div style={{ overflowY:"auto", padding:"14px", display:"flex", flexDirection:"column", gap:"10px" }}>
+          {showAddLot && (
+            <AddLotInline
+              type={ref.type} symbol={ref.symbol} person={ref.person}
+              onAdd={onAdd}
+              onClose={() => setShowAddLot(false)}/>
+          )}
           {holdings.map(h => (
             <HoldingCard key={h.id} holding={h} priceMap={priceMap} usdinr={usdinr}
               onDelete={onDelete} onUpdateBalance={onUpdateBalance}
@@ -438,7 +567,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
   );
 }
 
-function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateFundCategory, onDeleteDerived }) {
+function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateFundCategory, onDeleteDerived, onAdd }) {
   const [expanded,  setExpanded]  = useState({});
   const [modalSym,  setModalSym]  = useState(null); // track by symbol key, not snapshot
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
@@ -465,7 +594,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
     <>
       <StockModal modal={modal} priceMap={priceMap} usdinr={usdinr}
         onDelete={handleDelete} onUpdateBalance={onUpdateBalance}
-        onDeleteDerived={handleDeleteDerived} onClose={()=>setModalSym(null)}/>
+        onDeleteDerived={handleDeleteDerived} onAdd={onAdd} onClose={()=>setModalSym(null)}/>
 
       <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
         {["Equity","Debt","Gold"].map(cat => {
@@ -685,10 +814,12 @@ export default function PortfolioTab({
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
   const [view,          setView]          = useState("overview");
+  const [personFilter,  setPersonFilter]  = useState("all"); // "all" | "Selva" | "Akshaya"
   const [showAddForm,   setShowAddForm]   = useState(false);
   const [showCasImport,     setShowCasImport]     = useState(false);
   const [showTradebookImport, setShowTradebookImport] = useState(false);
   const [priceMap,    setPriceMap]    = useState({});
+  const [changeMap,   setChangeMap]   = useState({}); // { symbol: 1D changePct }
   const [fetching,    setFetching]    = useState(false);
   const [fetchedAt,   setFetchedAt]   = useState(null);
 
@@ -705,10 +836,11 @@ export default function PortfolioTab({
 
   const fetchPrices = useCallback(async () => {
     setFetching(true);
-    const map = await fetchAllPrices(allHoldings);
+    const { priceMap: map, changeMap: chg } = await fetchAllPricesWithChange(allHoldings);
     if (liveData?.MSFT) map.MSFT = liveData.MSFT;
     if (liveData?.NVDA) map.NVDA = liveData.NVDA;
     setPriceMap(map);
+    setChangeMap(chg);
     setFetchedAt(new Date());
     setFetching(false);
   }, [allHoldings, liveData]);
@@ -735,11 +867,38 @@ export default function PortfolioTab({
       : h.categoryOverride || CATEGORY_MAP[h.type] || "Other",
   })), [allHoldings, priceMap, usdinr]);
 
-  const totalNW = enriched.reduce((s, h) => s + (h.currentValue || 0), 0);
+  // Apply person filter — Joint holdings appear in both Selva and Akshaya views
+  const filteredEnriched = useMemo(() => {
+    if (personFilter === "all") return enriched;
+    return enriched.filter(h => h.person === personFilter || h.person === "Joint");
+  }, [enriched, personFilter]);
+
+  const totalNW = filteredEnriched.reduce((s, h) => s + (h.currentValue || 0), 0);
+
+  // 1D portfolio change: sum (currentValue × changePct) for all holdings with known change
+  const { dayChangeINR, dayChangePct } = useMemo(() => {
+    let change = 0;
+    let base   = 0;
+    for (const h of filteredEnriched) {
+      const sym = h.type === "us_stock" ? h.symbol
+                : h.type === "in_stock" ? (h.symbol && !/\.(NS|BO)$/i.test(h.symbol) ? h.symbol + ".NS" : h.symbol)
+                : h.type === "mf"       ? h.schemeCode
+                : null;
+      const pct = sym ? changeMap[sym] : null;
+      if (pct != null && h.currentValue) {
+        change += h.currentValue * (pct / 100);
+        base   += h.currentValue;
+      }
+    }
+    return {
+      dayChangeINR: change,
+      dayChangePct: base > 0 ? change / base * 100 : null,
+    };
+  }, [filteredEnriched, changeMap]);
 
   const grouped = useMemo(() => {
     const g = {};
-    for (const h of enriched) {
+    for (const h of filteredEnriched) {
       if (!g[h.category])        g[h.category] = {};
       if (!g[h.category][h.type]) g[h.category][h.type] = [];
       g[h.category][h.type].push(h);
@@ -762,12 +921,37 @@ export default function PortfolioTab({
     <div>
       {/* Sub-nav — two rows on mobile */}
       <div style={{ marginBottom:"20px", borderBottom:`1px solid ${T.border}`, paddingBottom:"12px" }}>
-        {/* Row 1: view tabs + refresh */}
+        {/* Row 1: view tabs + person filter + refresh */}
         <div style={{ display:"flex", alignItems:"center", gap:"4px", flexWrap:"wrap", rowGap:"8px" }}>
           <NavBtn id="overview" label="Overview"/>
           <NavBtn id="holdings" label="Holdings"/>
           <NavBtn id="grants"   label="Grants"/>
           <div style={{ flex:1 }}/>
+          {/* Person filter */}
+          <div style={{ display:"flex", background:T.card, borderRadius:"8px", padding:"2px", gap:"2px" }}>
+            {["all","Selva","Akshaya"].map(p => (
+              <button key={p} onClick={() => setPersonFilter(p)} style={{
+                padding:"5px 12px", border:"none", borderRadius:"6px", fontSize:"12px", fontWeight:600,
+                cursor:"pointer",
+                background: personFilter === p ? T.accent : "transparent",
+                color: personFilter === p ? T.bg
+                     : p === "Selva" ? T.selva
+                     : p === "Akshaya" ? T.akshaya
+                     : T.textDim,
+              }}>{p === "all" ? "All" : p}</button>
+            ))}
+          </div>
+          {/* 1D change badge */}
+          {dayChangePct !== null && (
+            <div style={{
+              padding:"5px 10px", borderRadius:"7px", fontSize:"12px", fontWeight:700,
+              background: dayChangeINR >= 0 ? `${T.accent}18` : `${T.red}18`,
+              color: dayChangeINR >= 0 ? T.accent : T.red, fontFamily:"'JetBrains Mono',monospace",
+              flexShrink:0,
+            }}>
+              {dayChangeINR >= 0 ? "+" : ""}{fmtL(dayChangeINR)} ({dayChangePct >= 0 ? "+" : ""}{dayChangePct.toFixed(2)}%) 1D
+            </div>
+          )}
           {staleMins !== null && (
             <span style={{ fontSize:"11px", color:staleMins>15?T.amber:T.textMuted, flexShrink:0 }}>
               {staleMins}m ago
@@ -819,10 +1003,10 @@ export default function PortfolioTab({
 
       {view==="overview" && (
         <>
-          <OverviewView enriched={enriched} totalNW={totalNW}/>
+          <OverviewView enriched={filteredEnriched} totalNW={totalNW}/>
           <div style={{ marginTop:"16px" }}>
             <PortfolioGrowthChart
-              equityHoldings={enriched.filter(h =>
+              equityHoldings={filteredEnriched.filter(h =>
                 ["us_stock","in_stock","mf"].includes(h.type) &&
                 h.acquisitionDate &&
                 h.source !== "goal"
@@ -835,6 +1019,7 @@ export default function PortfolioTab({
       {view==="holdings" && (
         <HoldingsView grouped={grouped} priceMap={priceMap} usdinr={usdinr}
           onDelete={onDeleteHolding}
+          onAdd={onAddHolding}
           onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}
           onUpdateFundCategory={(schemeCode, person, cat) => {
             const updates = holdingsData
