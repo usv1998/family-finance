@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { T } from "../../lib/theme";
 import { computeLifetimePlan, computeApproaches, fmtCr, LAKH, CRORE } from "./engine";
 
@@ -44,61 +44,154 @@ function VerdictBanner({ verdict, peak_rsu_pct, peak_rsu_needed }) {
 }
 
 function LifetimeChart({ yearData }) {
+  const [hovered, setHovered] = useState(null); // { idx, x, y, data }
+  const svgRef = useRef();
+
   if (!yearData?.length) return null;
   const W = 720, H = 220, PAD = 50;
-  const items = yearData.slice(0, 19); // cap display
+  const items = yearData.slice(0, 19);
   const maxV  = Math.max(...items.map(y => Math.max(y.total_outflow_monthly, y.projected_salary_monthly)));
   const xW    = (W - PAD * 2) / items.length;
 
   const stackOrder = [
-    { key: "exp_monthly",            color: T.red,    label: "Expenses" },
-    { key: "emi_monthly",            color: T.amber,  label: "EMI" },
-    { key: "prepay_monthly",         color: "#F97316",label: "Prepay" },
-    { key: "child_sip_monthly",      color: T.teal,   label: "Child SIP" },
-    { key: "retirement_sip_monthly", color: T.blue,   label: "Ret SIP" },
+    { key: "exp_monthly",            color: T.red,     label: "Expenses" },
+    { key: "emi_monthly",            color: T.amber,   label: "EMI" },
+    { key: "prepay_monthly",         color: "#F97316", label: "Prepay" },
+    { key: "child_sip_monthly",      color: T.teal,    label: "Child SIP" },
+    { key: "retirement_sip_monthly", color: T.blue,    label: "Ret SIP" },
   ];
 
   const lineY = (v) => H - PAD - (v / maxV) * (H - PAD * 1.3);
-
   const salaryPts = items.map((y, i) => `${PAD + i * xW + xW / 2},${lineY(y.projected_salary_monthly)}`).join(" ");
   const totalPts  = items.map((y, i) => `${PAD + i * xW + xW / 2},${lineY(y.total_outflow_monthly)}`).join(" ");
 
+  const handleMouseMove = useCallback((e) => {
+    const svg  = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    // Map client x to viewBox x
+    const scaleX  = W / rect.width;
+    const vbX     = (e.clientX - rect.left) * scaleX;
+    const idx     = Math.round((vbX - PAD - xW / 2) / xW);
+    if (idx < 0 || idx >= items.length) { setHovered(null); return; }
+    setHovered({ idx, clientX: e.clientX, clientY: e.clientY, data: items[idx] });
+  }, [items, xW]);
+
+  const TIP_W = 210;
+  let tipLeft = hovered ? hovered.clientX + 14 : 0;
+  let tipTop  = hovered ? hovered.clientY - 10 : 0;
+  // Clamp so tooltip doesn't go off the right edge
+  if (typeof window !== "undefined" && tipLeft + TIP_W > window.innerWidth - 8) {
+    tipLeft = hovered.clientX - TIP_W - 14;
+  }
+
   return (
-    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
-      {[0, 0.25, 0.5, 0.75, 1].map(pct => {
-        const y = lineY(pct * maxV);
-        return (
-          <g key={pct}>
-            <line x1={PAD} x2={W - PAD / 2} y1={y} y2={y} stroke={T.border} strokeDasharray="4,4" />
-            <text x={PAD - 4} y={y + 4} textAnchor="end" fontSize="8" fill={T.textMuted}>{fmtCr(pct * maxV)}</text>
-          </g>
-        );
-      })}
+    <div style={{ position: "relative" }}>
+      <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`}
+        style={{ overflow: "visible", cursor: "crosshair" }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHovered(null)}>
 
-      {/* Stacked bars */}
-      {items.map((y, i) => {
-        const x = PAD + i * xW;
-        let yBot = H - PAD;
-        return (
-          <g key={y.age}>
-            {stackOrder.map(s => {
-              const v = y[s.key] || 0;
-              if (!v) return null;
-              const barH = (v / maxV) * (H - PAD * 1.3);
-              const barY = yBot - barH;
-              yBot -= barH;
-              return <rect key={s.key} x={x + 2} y={barY} width={xW - 4} height={barH} fill={s.color} opacity="0.75" />;
-            })}
-            {i % 3 === 0 && <text x={x + xW / 2} y={H - PAD + 13} textAnchor="middle" fontSize="8" fill={T.textMuted}>{y.age}</text>}
-          </g>
-        );
-      })}
+        {/* Grid */}
+        {[0, 0.25, 0.5, 0.75, 1].map(pct => {
+          const y = lineY(pct * maxV);
+          return (
+            <g key={pct}>
+              <line x1={PAD} x2={W - PAD / 2} y1={y} y2={y} stroke={T.border} strokeDasharray="4,4" />
+              <text x={PAD - 4} y={y + 4} textAnchor="end" fontSize="8" fill={T.textMuted}>{fmtCr(pct * maxV)}</text>
+            </g>
+          );
+        })}
 
-      {/* Salary line */}
-      <polyline points={salaryPts} stroke={T.accent} strokeWidth="2" fill="none" />
-      {/* Total outflow line */}
-      <polyline points={totalPts}  stroke={T.red}    strokeWidth="1.5" fill="none" strokeDasharray="4,2" />
-    </svg>
+        {/* Stacked bars */}
+        {items.map((y, i) => {
+          const x        = PAD + i * xW;
+          const isActive = hovered?.idx === i;
+          let yBot = H - PAD;
+          return (
+            <g key={y.age}>
+              {stackOrder.map(s => {
+                const v = y[s.key] || 0;
+                if (!v) return null;
+                const barH = (v / maxV) * (H - PAD * 1.3);
+                const barY = yBot - barH;
+                yBot -= barH;
+                return (
+                  <rect key={s.key} x={x + 2} y={barY} width={xW - 4} height={barH}
+                    fill={s.color} opacity={isActive ? 1 : 0.75} />
+                );
+              })}
+              {/* Hover highlight overlay */}
+              {isActive && (
+                <rect x={x + 1} y={lineY(maxV)} width={xW - 2}
+                  height={H - PAD - lineY(maxV)}
+                  fill="white" opacity="0.06" rx="2" />
+              )}
+              {i % 3 === 0 && (
+                <text x={x + xW / 2} y={H - PAD + 13} textAnchor="middle" fontSize="8" fill={T.textMuted}>{y.age}</text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Salary line */}
+        <polyline points={salaryPts} stroke={T.accent} strokeWidth="2" fill="none" />
+        {/* Total outflow (need) dashed line */}
+        <polyline points={totalPts} stroke={T.red} strokeWidth="1.5" fill="none" strokeDasharray="4,2" />
+
+        {/* Hovered dot on salary line */}
+        {hovered && (() => {
+          const cx = PAD + hovered.idx * xW + xW / 2;
+          return (
+            <>
+              <circle cx={cx} cy={lineY(hovered.data.projected_salary_monthly)} r="3.5" fill={T.accent} />
+              <circle cx={cx} cy={lineY(hovered.data.total_outflow_monthly)}    r="3.5" fill={T.red} />
+            </>
+          );
+        })()}
+      </svg>
+
+      {/* Floating tooltip — rendered outside SVG so it can overflow */}
+      {hovered && (
+        <div style={{
+          position: "fixed", left: tipLeft, top: tipTop,
+          background: T.surface, border: `1px solid ${T.borderLight}`,
+          borderRadius: "10px", padding: "10px 14px",
+          fontSize: "12px", zIndex: 9999, pointerEvents: "none",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.5)", minWidth: `${TIP_W}px`,
+        }}>
+          <div style={{ fontWeight: 700, color: T.accent, marginBottom: "6px", fontSize: "13px" }}>
+            Age {hovered.data.age}
+          </div>
+          {/* Stacked segments */}
+          {stackOrder.map(s => {
+            const v = hovered.data[s.key] || 0;
+            if (!v) return null;
+            return (
+              <div key={s.key} style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "3px" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "5px", color: T.textDim }}>
+                  <span style={{ width: "7px", height: "7px", borderRadius: "2px", background: s.color, flexShrink: 0 }} />
+                  {s.label}
+                </span>
+                <span style={{ fontFamily: "'JetBrains Mono',monospace", color: T.text, fontWeight: 600 }}>{fmtCr(v)}/mo</span>
+              </div>
+            );
+          })}
+          <div style={{ borderTop: `1px solid ${T.border}`, margin: "6px 0 4px" }} />
+          {/* Lines */}
+          {[
+            { label: "Total Need",   value: hovered.data.total_outflow_monthly,   color: T.red },
+            { label: "Salary",       value: hovered.data.projected_salary_monthly, color: T.accent },
+            { label: "Gap (needs RSU)", value: hovered.data.gap_monthly,           color: T.amber, hide: !hovered.data.gap_monthly },
+          ].filter(r => !r.hide).map(r => (
+            <div key={r.label} style={{ display: "flex", justifyContent: "space-between", gap: "12px", marginBottom: "3px" }}>
+              <span style={{ color: r.color, fontWeight: 600 }}>{r.label}</span>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", color: r.color, fontWeight: 700 }}>{fmtCr(r.value)}/mo</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

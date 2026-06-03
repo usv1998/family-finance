@@ -4,6 +4,7 @@ import { fmtCr } from "./engine";
 import { getDerivedHoldings } from "../../lib/derivedHoldings";
 import { getMonthlyHistory } from "../../lib/priceHistory";
 import { getCurrentValueINR, calcFDValue } from "../../lib/priceService";
+import { ASSET_CATS, totalAssets, emptyAssets, normaliseAssets } from "./corpusConstants";
 
 // ── Quarter definitions ────────────────────────────────────────────────────────
 const BASE_QUARTERS = [
@@ -17,32 +18,6 @@ const BASE_QUARTERS = [
   { id: "Q4-FY26", label: "Jan 2026", qYM: "2026-01", date: "2026-01-01", age: 27 },
   { id: "Q1-FY27", label: "Apr 2026", qYM: "2026-04", date: "2026-04-01", age: 28, isCurrent: true },
 ];
-
-// ── Asset categories ──────────────────────────────────────────────────────────
-export const ASSET_CATS = [
-  { key: "mf",       label: "Mutual Funds",  color: "#A855F7" },
-  { key: "us_stock", label: "US Stocks",     color: "#6366F1" },
-  { key: "in_stock", label: "Indian Stocks", color: T.blue    },
-  { key: "epf",      label: "EPF",           color: "#F97316" },
-  { key: "ppf",      label: "PPF",           color: T.teal    },
-  { key: "fd",       label: "FD / Bonds",    color: T.amber   },
-  { key: "other",    label: "Other",         color: "#8B96AD" },
-];
-
-const emptyAssets = () => Object.fromEntries(ASSET_CATS.map(c => [c.key, ""]));
-export const totalAssets = (assets) =>
-  ASSET_CATS.reduce((s, c) => s + (parseFloat(assets?.[c.key]) || 0), 0);
-
-// Backward compat: old snapshots may have "stocks" instead of "us_stock"
-function normaliseAssets(assets) {
-  if (!assets) return {};
-  const a = { ...assets };
-  if (a.stocks !== undefined && a.us_stock === undefined) {
-    a.us_stock = a.stocks;
-    delete a.stocks;
-  }
-  return a;
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
