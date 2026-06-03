@@ -6,8 +6,9 @@ import { DEFAULT_CATEGORIES } from "./DailyExpensesTab";
 import { downloadCSV } from "../../lib/csvExport";
 
 export default function ExpensesTab({ expensesData, fy, onUpdate }) {
-  const inv     = expensesData?.[fy] || {};
-  const actuals = inv.actuals || {};
+  const inv       = expensesData?.[fy] || {};
+  const actuals   = inv.actuals   || {};
+  const txActuals = inv.txActuals || {}; // TX-derived — source of truth when present
 
   const savedBudgetById = Object.fromEntries(
     (inv.categories || []).map(c => [c.id, c.budget || 0])
@@ -23,8 +24,14 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   const [editBudgets,  setEditBudgets]  = useState(false);
   const [budgetDraft,  setBudgetDraft]  = useState({});
 
-  const getActual  = (mi, catId) => Number(actuals?.[mi]?.[catId]) || 0;
-  const monthTotal = (mi) => Object.values(actuals?.[mi] || {}).reduce((s,v)=>s+Number(v),0);
+  // For a given month: use TX actuals if any transactions exist, else manual actuals
+  const isTxMonth  = (mi) => !!txActuals[mi] && Object.keys(txActuals[mi]).length > 0;
+  const getActual  = (mi, catId) => isTxMonth(mi)
+    ? Number(txActuals[mi]?.[catId]) || 0
+    : Number(actuals?.[mi]?.[catId]) || 0;
+  const monthTotal = (mi) => isTxMonth(mi)
+    ? Object.values(txActuals[mi]).reduce((s,v)=>s+Number(v),0)
+    : Object.values(actuals?.[mi] || {}).reduce((s,v)=>s+Number(v),0);
   const monthBudget= () => categories.reduce((s,c)=>s+Number(c.budget||0),0);
 
   const enteredMonths  = MONTHS.map((_,mi) => monthTotal(mi) > 0);
@@ -48,6 +55,7 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
   };
 
   const openEdit = () => {
+    if (isTxMonth(selMonth)) return; // TX-managed months can't be manually edited
     const draft = {};
     categories.forEach(c => { draft[c.id] = getActual(selMonth, c.id) || ""; });
     setEditVals(draft);
@@ -132,12 +140,19 @@ export default function ExpensesTab({ expensesData, fy, onUpdate }) {
               </div>
             )}
           </div>
-          <button onClick={openEdit}
-            style={{ padding:"10px 18px", background:T.accent, border:"none",
-              borderRadius:"10px", color:T.bg, fontSize:"13px", fontWeight:700,
-              cursor:"pointer", whiteSpace:"nowrap" }}>
-            Edit Month
-          </button>
+          {isTxMonth(selMonth) ? (
+            <div style={{ padding:"8px 14px", background:"rgba(34,197,94,0.08)", border:`1px solid ${T.accent}`,
+              borderRadius:"10px", fontSize:"12px", color:T.accent, fontWeight:600, whiteSpace:"nowrap" }}>
+              ✓ Synced from Daily Expenses
+            </div>
+          ) : (
+            <button onClick={openEdit}
+              style={{ padding:"10px 18px", background:T.accent, border:"none",
+                borderRadius:"10px", color:T.bg, fontSize:"13px", fontWeight:700,
+                cursor:"pointer", whiteSpace:"nowrap" }}>
+              Edit Month
+            </button>
+          )}
         </div>
         {/* Budget progress bar */}
         {budget > 0 && (

@@ -380,32 +380,33 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next, retirementData);
   };
 
-  // Recompute expensesData actuals from txList for all FY months.
-  // FY months: Apr=0..Mar=11. A date in YYYY-MM maps to FY month index.
+  // Recompute TX-derived actuals from txList for all FY months.
+  // Stored in txActuals (separate from manually-entered actuals) so the
+  // two sources never collide. ExpensesTab reads txActuals preferentially
+  // for months that have any transactions.
   const rollTxIntoExpenses = (txList) => {
     // Build map: { fyKey: { monthIdx: { catId: total } } }
     const fyMap = {};
     for (const tx of txList) {
       const [y, m] = tx.date.split("-").map(Number); // m = 1-12
-      // FY: Apr(m=4)..Mar(m=3 next year). FY starts in Apr.
       const fyYear = m >= 4 ? y : y - 1;
       const fyKey  = `FY${fyYear}-${String(fyYear + 1).slice(2)}`;
       const mi     = m >= 4 ? m - 4 : m + 8; // Apr=0, Mar=11
-      if (!fyMap[fyKey])           fyMap[fyKey]           = {};
-      if (!fyMap[fyKey][mi])       fyMap[fyKey][mi]       = {};
-      const catId = tx.categoryId;
-      fyMap[fyKey][mi][catId] = (fyMap[fyKey][mi][catId] || 0) + Number(tx.amount);
+      if (!fyMap[fyKey])       fyMap[fyKey]       = {};
+      if (!fyMap[fyKey][mi])   fyMap[fyKey][mi]   = {};
+      fyMap[fyKey][mi][tx.categoryId] = (fyMap[fyKey][mi][tx.categoryId] || 0) + Number(tx.amount);
     }
     setExpensesData(prev => {
       const next = { ...prev };
+      // Reset txActuals for every known FY so that deleting all TXs in a
+      // month correctly clears the displayed value (not just merges).
+      for (const fyKey of Object.keys(next)) {
+        if (fyKey.startsWith("FY")) next[fyKey] = { ...next[fyKey], txActuals: {} };
+      }
+      // Write fresh TX totals
       for (const [fyKey, months] of Object.entries(fyMap)) {
         const existing = next[fyKey] || {};
-        const actuals  = { ...(existing.actuals || {}) };
-        for (const [mi, cats] of Object.entries(months)) {
-          // Merge: keep non-tx actuals, overwrite tx-sourced categories
-          actuals[mi] = { ...(actuals[mi] || {}), ...cats };
-        }
-        next[fyKey] = { ...existing, actuals };
+        next[fyKey] = { ...existing, txActuals: months };
       }
       return next;
     });
