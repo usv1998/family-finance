@@ -60,7 +60,7 @@ const SUB_TABS = [
   { id: "glossary", label: "Glossary" },
 ];
 
-export default function RetirementTab({ retirementData, onUpdate, holdingsData, liveData }) {
+export default function RetirementTab({ retirementData, onUpdate, holdingsData, liveData, rsuData, incomeData, investmentsData }) {
   const [subTab, setSubTab] = useState("corpus");
 
   // Financial plan state
@@ -117,7 +117,7 @@ export default function RetirementTab({ retirementData, onUpdate, holdingsData, 
         )}
       </div>
 
-      {subTab === "corpus"   && <CorpusTracker retirementData={retirementData} onUpdate={onUpdate} holdingsData={holdingsData} liveData={liveData} />}
+      {subTab === "corpus"   && <CorpusTracker retirementData={retirementData} onUpdate={onUpdate} holdingsData={holdingsData} liveData={liveData} rsuData={rsuData} incomeData={incomeData} investmentsData={investmentsData} />}
       {subTab === "homeloan" && <HomeLoanCalc plan={plan} onUpdatePlan={updatePlan} />}
       {subTab === "lifetime" && <LifetimePlan plan={plan} onUpdatePlan={updatePlan} />}
       {subTab === "glossary" && <GlossaryTab />}

@@ -607,6 +607,9 @@ export default function FamilyFinanceTracker() {
             onUpdate={updateRetirement}
             holdingsData={holdingsData}
             liveData={liveData}
+            rsuData={rsuData}
+            incomeData={incomeData}
+            investmentsData={investmentsData}
           />
         )}
         {activeTab==="portfolio"&&(
