@@ -114,11 +114,16 @@ function computeHistoricalCorpus(qDate, qYM, allHoldings, priceHistories) {
   const APR_2026_MS = new Date("2026-04-01").getTime();
   const fraction    = Math.max(0, Math.min((qTs - APR_2024_MS) / (APR_2026_MS - APR_2024_MS), 1));
 
+  // Prefer derived EPF (already aggregates both persons from income data).
+  // Only fall back to manually-stored EPF holdings if no derived ones exist.
   let currentEPF = 0, currentPPF = 0;
-  for (const h of allHoldings) {
-    if (h.type === "epf") currentEPF += h.balance || 0;
-    if (h.type === "ppf") currentPPF += h.balance || 0;
+  const derivedEPF = allHoldings.filter(h => h.type === "epf" && h.derived);
+  if (derivedEPF.length > 0) {
+    derivedEPF.forEach(h => { currentEPF += h.balance || 0; });
+  } else {
+    allHoldings.filter(h => h.type === "epf" && !h.derived).forEach(h => { currentEPF += h.balance || 0; });
   }
+  allHoldings.filter(h => h.type === "ppf").forEach(h => { currentPPF += h.balance || 0; });
   corpus.epf = Math.round(currentEPF * fraction);
   corpus.ppf = Math.round(currentPPF * fraction);
 
