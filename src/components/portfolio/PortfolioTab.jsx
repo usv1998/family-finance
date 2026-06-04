@@ -1059,13 +1059,16 @@ export default function PortfolioTab({
           </div>
           {/* 1D change badge */}
           {dayChangePct !== null && (
-            <div style={{
-              padding:"5px 10px", borderRadius:"7px", fontSize:"12px", fontWeight:700,
-              background: dayChangeINR >= 0 ? `${T.accent}18` : `${T.red}18`,
-              color: dayChangeINR >= 0 ? T.accent : T.red, fontFamily:"'JetBrains Mono',monospace",
-              flexShrink:0,
-            }}>
-              {dayChangeINR >= 0 ? "+" : ""}{fmtL(dayChangeINR)} ({dayChangePct >= 0 ? "+" : ""}{dayChangePct.toFixed(2)}%) 1D
+            <div style={{ position:"relative", flexShrink:0 }}
+              title={`1-Day Portfolio Change\n\nHow it's calculated:\n• For each stock/MF holding, Yahoo Finance returns today's price and yesterday's close\n• 1D change% = (today − yesterday) / yesterday × 100\n• Your INR change = holding value × change%\n• All holdings summed = total portfolio 1D change\n\nNote: only holdings with live price data are included`}>
+              <div style={{
+                padding:"5px 10px", borderRadius:"7px", fontSize:"12px", fontWeight:700,
+                background: dayChangeINR >= 0 ? `${T.accent}18` : `${T.red}18`,
+                color: dayChangeINR >= 0 ? T.accent : T.red, fontFamily:"'JetBrains Mono',monospace",
+                cursor:"help",
+              }}>
+                {dayChangeINR >= 0 ? "+" : ""}{fmtL(dayChangeINR)} ({dayChangePct >= 0 ? "+" : ""}{dayChangePct.toFixed(2)}%) 1D ⓘ
+              </div>
             </div>
           )}
           {staleMins !== null && (

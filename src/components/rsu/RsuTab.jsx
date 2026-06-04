@@ -7,6 +7,7 @@ import RsuForm from "./RsuForm";
 import RsuTable from "./RsuTable";
 import GrantForm from "./GrantForm";
 import GrantList from "./GrantList";
+import RsuProjection from "./RsuProjection";
 
 export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDelete, onAddGrant, onDeleteGrant, personFilter }) {
   const [view,            setView]            = useState("events");
@@ -61,8 +62,8 @@ export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDele
       {/* View toggle */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"12px", marginBottom:"20px" }}>
         <div style={{ display:"flex", gap:"4px", padding:"4px", background:T.card, borderRadius:"10px" }}>
-          <button onClick={()=>setView("events")}  style={btnStyle(view==="events")}>Vest Events</button>
-          <button onClick={()=>setView("grants")}  style={btnStyle(view==="grants")}>
+          <button onClick={()=>setView("events")}     style={btnStyle(view==="events")}>Vest Events</button>
+          <button onClick={()=>setView("grants")}     style={btnStyle(view==="grants")}>
             Grant Schedule
             {(rsuGrants||[]).length > 0 && (
               <span style={{ marginLeft:"6px", background:T.purple+"33", color:T.purple, borderRadius:"10px", padding:"1px 7px", fontSize:"11px", fontWeight:700 }}>
@@ -70,6 +71,7 @@ export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDele
               </span>
             )}
           </button>
+          <button onClick={()=>setView("projection")} style={btnStyle(view==="projection")}>📈 Projection</button>
         </div>
 
         {/* Upcoming vests banner */}
@@ -128,6 +130,15 @@ export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDele
           <GrantForm onAdd={onAddGrant}/>
           <GrantList grants={rsuGrants||[]} rsuData={rsuData} liveData={liveData} onDelete={onDeleteGrant}/>
         </div>
+      )}
+
+      {/* ── Projection view ── */}
+      {view === "projection" && (
+        <RsuProjection
+          rsuGrants={rsuGrants||[]}
+          rsuData={rsuData}
+          liveData={liveData}
+          personFilter={rsuFilterPerson}/>
       )}
     </div>
   );
