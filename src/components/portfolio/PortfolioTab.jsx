@@ -669,7 +669,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
   );
 }
 
-function HoldingsView({ grouped, priceMap, usdinr, sortBy = "value", changeMap = {}, onDelete, onUpdateBalance, onUpdateFundCategory, onDeleteDerived, onAdd }) {
+function HoldingsView({ grouped, priceMap, usdinr, sortBy = "value", changeMap = {}, onDelete, onUpdateBalance, onUpdateFundCategory, onUpdateHoldingGoal, goals = [], onDeleteDerived, onAdd }) {
   const [expanded,  setExpanded]  = useState({});
   const [modalSym,  setModalSym]  = useState(null); // track by symbol key, not snapshot
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
@@ -904,6 +904,28 @@ function HoldingsView({ grouped, priceMap, usdinr, sortBy = "value", changeMap =
                                             background: active ? T.amber : T.card,
                                             color:      active ? T.bg    : T.textMuted }}>
                                           {cat}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {/* Goal earmarking — all holding types */}
+                                {goals.length > 0 && !lots.every(l => l.derived) && onUpdateHoldingGoal && (
+                                  <div onClick={e => e.stopPropagation()}
+                                    style={{ display:"flex", gap:"4px", alignItems:"center", flexWrap:"wrap" }}>
+                                    <span style={{ fontSize:"9px", color:T.textMuted, fontWeight:700, letterSpacing:"0.3px" }}>GOAL</span>
+                                    {goals.filter(g => g.termType === "long").map(g => {
+                                      const currentTag = lots[0]?.goalTag;
+                                      const active = currentTag === g.id;
+                                      return (
+                                        <button key={g.id}
+                                          onClick={() => onUpdateHoldingGoal(sym, lots[0]?.person, active ? null : g.id)}
+                                          title={active ? `Remove from ${g.name}` : `Tag to ${g.name}`}
+                                          style={{ padding:"2px 7px", borderRadius:"5px", border:`1px solid ${active ? T.cta : T.border}`,
+                                            cursor:"pointer", fontSize:"10px", fontWeight:700,
+                                            background: active ? T.ctaDim : "transparent",
+                                            color:      active ? T.cta    : T.textMuted }}>
+                                          {active ? "✓ " : ""}{g.name}
                                         </button>
                                       );
                                     })}
@@ -1273,6 +1295,7 @@ export default function PortfolioTab({
       {view==="holdings" && (
         <HoldingsView grouped={grouped} priceMap={priceMap} usdinr={usdinr}
           sortBy={holdingSort} changeMap={changeMap}
+          goals={investmentsData?.goals || []}
           onDelete={onDeleteHolding}
           onAdd={onAddHolding}
           onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}
@@ -1280,6 +1303,13 @@ export default function PortfolioTab({
             const updates = holdingsData
               .filter(h => h.type === "mf" && h.schemeCode === schemeCode && h.person === person)
               .map(h => ({ id: h.id, changes: { categoryOverride: cat || undefined } }));
+            if (updates.length > 0) onUpdateHoldingsBatch(updates);
+          }}
+          onUpdateHoldingGoal={(sym, person, goalId) => {
+            // Tag all lots of this symbol (or schemeCode for MFs) to the goal
+            const updates = holdingsData
+              .filter(h => (h.symbol === sym || h.schemeCode === sym) && h.person === person)
+              .map(h => ({ id: h.id, changes: { goalTag: goalId ?? null } }));
             if (updates.length > 0) onUpdateHoldingsBatch(updates);
           }}
           onDeleteDerived={h => {

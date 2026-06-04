@@ -90,9 +90,12 @@ function NwSparkline({ history }) {
 
 // ── Goal Progress Ring ─────────────────────────────────────────────────────────
 
-function GoalRing({ goal, size = 80 }) {
+function GoalRing({ goal, size = 80, liveValue = null }) {
   const target  = Number(goal.targetAmount) || 0;
-  const saved   = Number(goal.savedAmount)  || 0;
+  // liveValue: sum of tagged holdings' current market value (computed from priceMap).
+  // Falls back to manually entered savedAmount if no holdings are tagged.
+  const saved   = liveValue != null ? liveValue : (Number(goal.savedAmount) || 0);
+  const isLive  = liveValue != null;
   const pct     = target > 0 ? Math.min(100, saved / target * 100) : 0;
 
   const today    = new Date();
@@ -140,8 +143,14 @@ function GoalRing({ goal, size = 80 }) {
         {goal.name}
       </div>
       <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"1px" }}>
-        {fmtL(saved)} / {fmtL(target)}
+        <span style={{ color: isLive ? T.accent : T.textMuted }}>{fmtL(saved)}</span>
+        {" / "}{fmtL(target)}
       </div>
+      {isLive && (
+        <div style={{ fontSize:"8px", color:T.accent, marginTop:"1px", fontWeight:600 }}>
+          ● live
+        </div>
+      )}
       {daysLeft !== null && (
         <div style={{ fontSize:"9px", fontWeight:700, marginTop:"2px",
           color: overdue ? T.red : daysLeft <= 60 ? T.amber : T.textMuted }}>
@@ -528,6 +537,20 @@ export default function DashboardTab({
   // Goals from investmentsData
   const goals = investmentsData?.goals || [];
 
+  // Compute live goal values: sum of current market value of holdings tagged to each goal
+  const goalLiveValues = useMemo(() => {
+    if (!holdingsData?.length || !Object.keys(priceMap).length) return {};
+    const map = {};
+    for (const h of holdingsData) {
+      if (!h.goalTag) continue;
+      const val = getCurrentValueINR(h, priceMap, usdinr);
+      if (val != null) {
+        map[h.goalTag] = (map[h.goalTag] || 0) + val;
+      }
+    }
+    return map;
+  }, [holdingsData, priceMap, usdinr]);
+
   // Upcoming RSU vests (next 5 for dashboard)
   const upcoming = useMemo(() =>
     getUpcomingVests(rsuGrants || [], 5),
@@ -686,7 +709,8 @@ export default function DashboardTab({
           ) : (
             <div style={{ display:"flex", gap:"16px", flexWrap:"wrap", justifyContent:"center" }}>
               {goals.slice(0, 4).map(g => (
-                <GoalRing key={g.id} goal={g} size={goals.length === 1 ? 100 : 82}/>
+                <GoalRing key={g.id} goal={g} size={goals.length === 1 ? 100 : 82}
+                  liveValue={goalLiveValues[g.id] ?? null}/>
               ))}
             </div>
           )}

@@ -6,6 +6,12 @@ import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER, PERSON_STOCK } from "../../lib/c
 
 const EMPTY_GOAL = { name:"", targetAmount:"", targetDate:"", termType:"short", instrument:"", savedAmount:"", notes:"" };
 
+const DEFAULT_LONG_GOALS = [
+  { name:"Retirement",        targetAmount:"30000000", targetDate:"2045-04-01", termType:"long", instrument:"Stocks & MF",  savedAmount:"0", notes:"" },
+  { name:"House Downpayment", targetAmount:"5000000",  targetDate:"2028-04-01", termType:"long", instrument:"Debt MF",      savedAmount:"0", notes:"" },
+  { name:"Child Education",   targetAmount:"10000000", targetDate:"2038-04-01", termType:"long", instrument:"Equity MF",    savedAmount:"0", notes:"" },
+];
+
 export default function InvestmentsTab({ incomeData, rsuData, investmentsData, fy, onUpdateInvestments }) {
   const inv = investmentsData?.[fy] || {};
   const epfOpening = inv.epfOpening || { Selva:0, Akshaya:0 };
@@ -159,8 +165,24 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
         )}
 
         {goals.length === 0 && !showGoalForm ? (
-          <div style={{ textAlign:"center", padding:"32px", color:T.textMuted, fontSize:"13px" }}>
-            No goals yet. Track savings towards a trip, event, or any financial milestone.
+          <div style={{ textAlign:"center", padding:"32px 16px", color:T.textMuted }}>
+            <div style={{ fontSize:"13px", marginBottom:"16px" }}>
+              No goals yet. Track savings towards a trip, event, or any financial milestone.
+            </div>
+            <div style={{ fontSize:"11px", fontWeight:700, color:T.textDim, marginBottom:"10px", letterSpacing:"0.4px" }}>
+              QUICK ADD LONG-TERM GOALS
+            </div>
+            <div style={{ display:"flex", gap:"8px", justifyContent:"center", flexWrap:"wrap" }}>
+              {DEFAULT_LONG_GOALS.map(g => (
+                <button key={g.name}
+                  onClick={() => updateGoals([...goals, { id:genId(), ...g, targetAmount:Number(g.targetAmount), savedAmount:0 }])}
+                  style={{ padding:"8px 16px", borderRadius:"8px",
+                    border:`1px solid ${T.cta}44`, background:T.ctaDim,
+                    color:T.cta, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
+                  + {g.name}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
