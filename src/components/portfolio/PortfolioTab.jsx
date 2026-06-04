@@ -1060,7 +1060,7 @@ export default function PortfolioTab({
           {/* 1D change badge */}
           {dayChangePct !== null && (
             <div style={{ position:"relative", flexShrink:0 }}
-              title={`1-Day Portfolio Change\n\nHow it's calculated:\n• For each stock/MF holding, Yahoo Finance returns today's price and yesterday's close\n• 1D change% = (today − yesterday) / yesterday × 100\n• Your INR change = holding value × change%\n• All holdings summed = total portfolio 1D change\n\nNote: only holdings with live price data are included`}>
+              title={`1-Day Portfolio Change\n\nHow it's calculated:\n• US & Indian stocks: Yahoo Finance returns today's price vs yesterday's close\n• Mutual funds: mfapi.in returns today's NAV vs previous NAV\n• 1D change% = (today − yesterday) / yesterday × 100\n• Your INR change = holding current value × 1D%\n• All holdings with live data are summed\n\nExcluded (no daily price): EPF, PPF, Fixed Deposits`}>
               <div style={{
                 padding:"5px 10px", borderRadius:"7px", fontSize:"12px", fontWeight:700,
                 background: dayChangeINR >= 0 ? `${T.accent}18` : `${T.red}18`,

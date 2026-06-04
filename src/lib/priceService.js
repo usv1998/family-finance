@@ -67,8 +67,8 @@ export async function fetchAllPricesWithChange(holdings, onProgress) {
         .catch(() => { tick(s); return { k: s, price: null }; })
     )),
     Promise.allSettled(mfCodes.map(c =>
-      fetchMFNav(c)
-        .then(n => { tick(String(c)); return { k: c, price: n, changePct: null }; })
+      fetchMFNavWithChange(c)
+        .then(r => { tick(String(c)); return { k: c, price: r?.price ?? null, changePct: r?.changePct ?? null }; })
         .catch(() => { tick(String(c)); return { k: c, price: null }; })
     )),
   ]);
@@ -84,7 +84,26 @@ export async function fetchAllPricesWithChange(holdings, onProgress) {
   return { priceMap, changeMap, total, fetched: Object.keys(priceMap).length };
 }
 
-// Fetch latest NAV for an AMFI scheme code.
+// Fetch latest NAV + 1D change for an AMFI scheme code.
+// mfapi.in returns data[] sorted newest-first — data[0]=today, data[1]=yesterday.
+// Returns { price, changePct } or null.
+export async function fetchMFNavWithChange(schemeCode) {
+  try {
+    const res  = await fetch(`${MF_BASE}/${schemeCode}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const data = json?.data;
+    if (!data?.length) return null;
+    const todayNav  = parseFloat(data[0]?.nav) || null;
+    const prevNav   = data.length > 1 ? parseFloat(data[1]?.nav) || null : null;
+    const changePct = todayNav != null && prevNav != null && prevNav > 0
+      ? (todayNav - prevNav) / prevNav * 100
+      : null;
+    return { price: todayNav, changePct };
+  } catch { return null; }
+}
+
+// Fetch latest NAV for an AMFI scheme code (price only, no change).
 export async function fetchMFNav(schemeCode) {
   try {
     const res  = await fetch(`${MF_BASE}/${schemeCode}`, { cache: "no-store" });
