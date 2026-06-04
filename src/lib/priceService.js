@@ -20,7 +20,9 @@ export async function fetchStockPrice(symbol) {
 }
 
 // Fetch stock price + 1D change percent for a symbol.
-// Returns { price, changePct } or null.
+// Returns { price, changePct, prevClose } or null.
+// Uses regularMarketChangePercent (Yahoo's own 1D figure) as primary source,
+// falls back to computing from chartPreviousClose.
 export async function fetchStockPriceWithChange(symbol) {
   try {
     const url  = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=5d`);
@@ -31,10 +33,13 @@ export async function fetchStockPriceWithChange(symbol) {
     if (!meta) return null;
     const price     = meta.regularMarketPrice ?? null;
     const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
-    const changePct = price != null && prevClose != null && prevClose > 0
-      ? (price - prevClose) / prevClose * 100
-      : null;
-    return { price, changePct };
+    // Prefer Yahoo's own field; fall back to manual calc
+    const changePct = meta.regularMarketChangePercent != null
+      ? meta.regularMarketChangePercent
+      : (price != null && prevClose != null && prevClose > 0
+          ? (price - prevClose) / prevClose * 100
+          : null);
+    return { price, changePct, prevClose };
   } catch { return null; }
 }
 
@@ -63,7 +68,7 @@ export async function fetchAllPricesWithChange(holdings, onProgress) {
   const [stockResults, mfResults] = await Promise.all([
     Promise.allSettled(stockSymbols.map(s =>
       fetchStockPriceWithChange(s)
-        .then(r => { tick(s); return { k: s, price: r?.price, changePct: r?.changePct }; })
+        .then(r => { tick(s); return { k: s, price: r?.price, changePct: r?.changePct, prevClose: r?.prevClose }; })
         .catch(() => { tick(s); return { k: s, price: null }; })
     )),
     Promise.allSettled(mfCodes.map(c =>
@@ -73,15 +78,17 @@ export async function fetchAllPricesWithChange(holdings, onProgress) {
     )),
   ]);
 
-  const priceMap  = {};
-  const changeMap = {};
+  const priceMap    = {};
+  const changeMap   = {};
+  const prevCloseMap = {}; // { symbol: prevClose } — needed to re-derive changePct when price is overridden
   for (const r of [...stockResults, ...mfResults]) {
     if (r.status === "fulfilled" && r.value.price != null) {
       priceMap[r.value.k]  = r.value.price;
-      if (r.value.changePct != null) changeMap[r.value.k] = r.value.changePct;
+      if (r.value.changePct != null) changeMap[r.value.k]   = r.value.changePct;
+      if (r.value.prevClose != null) prevCloseMap[r.value.k] = r.value.prevClose;
     }
   }
-  return { priceMap, changeMap, total, fetched: Object.keys(priceMap).length };
+  return { priceMap, changeMap, prevCloseMap, total, fetched: Object.keys(priceMap).length };
 }
 
 // Fetch latest NAV + 1D change for an AMFI scheme code.

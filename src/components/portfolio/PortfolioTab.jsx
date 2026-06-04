@@ -920,11 +920,13 @@ export default function PortfolioTab({
   const [showAddForm,   setShowAddForm]   = useState(false);
   const [showCasImport,     setShowCasImport]     = useState(false);
   const [showTradebookImport, setShowTradebookImport] = useState(false);
-  const [priceMap,    setPriceMap]    = useState({});
-  const [changeMap,   setChangeMap]   = useState({}); // { symbol: 1D changePct }
-  const [fetching,    setFetching]    = useState(false);
-  const [fetchedAt,   setFetchedAt]   = useState(null);
-  const [toast,       setToast]       = useState(null); // { phase:"loading"|"done", ... }
+  const [priceMap,     setPriceMap]     = useState({});
+  const [changeMap,    setChangeMap]    = useState({}); // { symbol: 1D changePct }
+  const [prevCloseMap, setPrevCloseMap] = useState({}); // { symbol: prevClose } for re-deriving change
+  const [fetching,     setFetching]     = useState(false);
+  const [fetchedAt,    setFetchedAt]    = useState(null);
+  const [toast,        setToast]        = useState(null);
+  const [showDayBreakdown, setShowDayBreakdown] = useState(false);
   const toastTimerRef = useRef(null);
 
   const usdinr = liveData?.USDINR || 85;
@@ -946,13 +948,23 @@ export default function PortfolioTab({
     const onProgress = (fetched, total, label) =>
       setToast({ phase: "loading", fetched, total, label });
 
-    const { priceMap: map, changeMap: chg, fetched: count } =
+    const { priceMap: map, changeMap: chg, prevCloseMap: pcm, fetched: count } =
       await fetchAllPricesWithChange(allHoldings, onProgress);
 
-    if (liveData?.MSFT) map.MSFT = liveData.MSFT;
-    if (liveData?.NVDA) map.NVDA = liveData.NVDA;
+    // Override MSFT/NVDA prices with liveData, and recompute their changePct
+    // against prevClose so the two numbers are always consistent.
+    for (const sym of ["MSFT", "NVDA"]) {
+      const livePrice = liveData?.[sym];
+      if (livePrice) {
+        map[sym] = livePrice;
+        // Recompute change: (livePrice - prevClose) / prevClose
+        const pc = pcm[sym];
+        if (pc && pc > 0) chg[sym] = (livePrice - pc) / pc * 100;
+      }
+    }
     setPriceMap(map);
     setChangeMap(chg);
+    setPrevCloseMap(pcm);
     setFetchedAt(new Date());
     setFetching(false);
 
@@ -964,7 +976,15 @@ export default function PortfolioTab({
   // Fetch on mount and when holdings count changes
   useEffect(() => { fetchPrices(); }, [allHoldings.length]);
 
-  // Sync liveData price updates (MSFT/NVDA) without a full refetch
+  // Close 1D breakdown on outside click
+  useEffect(() => {
+    if (!showDayBreakdown) return;
+    const handler = () => setShowDayBreakdown(false);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [showDayBreakdown]);
+
+  // Sync liveData price updates (MSFT/NVDA) — also recompute changePct from stored prevClose
   useEffect(() => {
     setPriceMap(prev => {
       const next = { ...prev };
@@ -972,7 +992,16 @@ export default function PortfolioTab({
       if (liveData?.NVDA) next.NVDA = liveData.NVDA;
       return next;
     });
-  }, [liveData?.MSFT, liveData?.NVDA]);
+    setChangeMap(prev => {
+      const next = { ...prev };
+      for (const sym of ["MSFT", "NVDA"]) {
+        const livePrice = liveData?.[sym];
+        const pc = prevCloseMap[sym];
+        if (livePrice && pc && pc > 0) next[sym] = (livePrice - pc) / pc * 100;
+      }
+      return next;
+    });
+  }, [liveData?.MSFT, liveData?.NVDA, prevCloseMap]);
 
   const enriched = useMemo(() => allHoldings.map(h => ({
     ...h,
@@ -992,9 +1021,11 @@ export default function PortfolioTab({
   const totalNW = filteredEnriched.reduce((s, h) => s + (h.currentValue || 0), 0);
 
   // 1D portfolio change: sum (currentValue × changePct) for all holdings with known change
-  const { dayChangeINR, dayChangePct } = useMemo(() => {
+  const { dayChangeINR, dayChangePct, dayBreakdown } = useMemo(() => {
     let change = 0;
     let base   = 0;
+    const bySymbol = {}; // { sym: { label, changePct, changeINR, value } }
+
     for (const h of filteredEnriched) {
       const sym = h.type === "us_stock" ? h.symbol
                 : h.type === "in_stock" ? (h.symbol && !/\.(NS|BO)$/i.test(h.symbol) ? h.symbol + ".NS" : h.symbol)
@@ -1002,13 +1033,25 @@ export default function PortfolioTab({
                 : null;
       const pct = sym ? changeMap[sym] : null;
       if (pct != null && h.currentValue) {
-        change += h.currentValue * (pct / 100);
+        const contrib = h.currentValue * (pct / 100);
+        change += contrib;
         base   += h.currentValue;
+        const label = h.symbol || h.name || String(sym);
+        if (!bySymbol[sym]) bySymbol[sym] = { label, changePct: pct, changeINR: 0, value: 0 };
+        bySymbol[sym].changeINR += contrib;
+        bySymbol[sym].value     += h.currentValue;
       }
     }
+
+    // Top contributors sorted by absolute INR impact
+    const breakdown = Object.values(bySymbol)
+      .sort((a, b) => Math.abs(b.changeINR) - Math.abs(a.changeINR))
+      .slice(0, 8);
+
     return {
       dayChangeINR: change,
       dayChangePct: base > 0 ? change / base * 100 : null,
+      dayBreakdown: breakdown,
     };
   }, [filteredEnriched, changeMap]);
 
@@ -1057,18 +1100,73 @@ export default function PortfolioTab({
               }}>{p === "all" ? "All" : p}</button>
             ))}
           </div>
-          {/* 1D change badge */}
+          {/* 1D change badge — click to expand per-asset breakdown */}
           {dayChangePct !== null && (
-            <div style={{ position:"relative", flexShrink:0 }}
-              title={`1-Day Portfolio Change\n\nHow it's calculated:\n• US & Indian stocks: Yahoo Finance returns today's price vs yesterday's close\n• Mutual funds: mfapi.in returns today's NAV vs previous NAV\n• 1D change% = (today − yesterday) / yesterday × 100\n• Your INR change = holding current value × 1D%\n• All holdings with live data are summed\n\nExcluded (no daily price): EPF, PPF, Fixed Deposits`}>
-              <div style={{
+            <div style={{ position:"relative", flexShrink:0 }}>
+              <button onClick={() => setShowDayBreakdown(v => !v)} style={{
                 padding:"5px 10px", borderRadius:"7px", fontSize:"12px", fontWeight:700,
                 background: dayChangeINR >= 0 ? `${T.accent}18` : `${T.red}18`,
                 color: dayChangeINR >= 0 ? T.accent : T.red, fontFamily:"'JetBrains Mono',monospace",
-                cursor:"help",
+                border: `1px solid ${dayChangeINR >= 0 ? T.accent : T.red}44`,
+                cursor:"pointer",
               }}>
-                {dayChangeINR >= 0 ? "+" : ""}{fmtL(dayChangeINR)} ({dayChangePct >= 0 ? "+" : ""}{dayChangePct.toFixed(2)}%) 1D ⓘ
-              </div>
+                {dayChangeINR >= 0 ? "+" : ""}{fmtL(dayChangeINR)} ({dayChangePct >= 0 ? "+" : ""}{dayChangePct.toFixed(2)}%) 1D ▾
+              </button>
+
+              {showDayBreakdown && (
+                <div onClick={e => e.stopPropagation()}
+                  style={{
+                    position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:200,
+                    background:T.surface, border:`1px solid ${T.border}`,
+                    borderRadius:"12px", padding:"14px 16px", minWidth:"280px",
+                    boxShadow:"0 8px 32px rgba(0,0,0,0.5)",
+                  }}>
+                  <div style={{ fontSize:"11px", fontWeight:700, color:T.text, marginBottom:"10px",
+                    display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span>1D Change Breakdown</span>
+                    <button onClick={() => setShowDayBreakdown(false)}
+                      style={{ background:"none", border:"none", color:T.textMuted, cursor:"pointer", fontSize:"14px", lineHeight:1 }}>×</button>
+                  </div>
+                  {dayBreakdown.map(d => {
+                    const gc = d.changeINR >= 0 ? T.accent : T.red;
+                    return (
+                      <div key={d.label} style={{ display:"flex", justifyContent:"space-between",
+                        alignItems:"center", padding:"5px 0",
+                        borderBottom:`1px solid ${T.border}22`, gap:"12px" }}>
+                        <div style={{ minWidth:0 }}>
+                          <div style={{ fontSize:"12px", color:T.text, fontWeight:600,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"140px" }}>
+                            {d.label}
+                          </div>
+                          <div style={{ fontSize:"10px", color:T.textMuted }}>{fmtL(d.value)}</div>
+                        </div>
+                        <div style={{ textAlign:"right", flexShrink:0 }}>
+                          <div style={{ fontSize:"12px", fontWeight:700, color:gc,
+                            fontFamily:"'JetBrains Mono',monospace" }}>
+                            {d.changeINR >= 0 ? "+" : ""}{fmtL(d.changeINR)}
+                          </div>
+                          <div style={{ fontSize:"10px", color:gc, fontFamily:"'JetBrains Mono',monospace" }}>
+                            {d.changePct >= 0 ? "+" : ""}{d.changePct.toFixed(2)}%
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ marginTop:"10px", padding:"8px 0 0",
+                    display:"flex", justifyContent:"space-between", fontSize:"12px" }}>
+                    <span style={{ color:T.textMuted, fontSize:"11px" }}>
+                      Stocks + MFs with live data · EPF/PPF/FD excluded
+                    </span>
+                  </div>
+                  <div style={{ marginTop:"8px", padding:"8px", background:T.card, borderRadius:"8px",
+                    fontSize:"10px", color:T.textMuted, lineHeight:1.6 }}>
+                    <b style={{ color:T.textDim }}>How calculated:</b><br/>
+                    US/IN stocks: Yahoo Finance <code>regularMarketChangePercent</code><br/>
+                    MFs: (today NAV − prev NAV) / prev NAV<br/>
+                    Your change = holding value × 1D%
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {staleMins !== null && (
