@@ -669,7 +669,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
   );
 }
 
-function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, onUpdateFundCategory, onDeleteDerived, onAdd }) {
+function HoldingsView({ grouped, priceMap, usdinr, sortBy = "value", changeMap = {}, onDelete, onUpdateBalance, onUpdateFundCategory, onDeleteDerived, onAdd }) {
   const [expanded,  setExpanded]  = useState({});
   const [modalSym,  setModalSym]  = useState(null); // track by symbol key, not snapshot
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
@@ -783,6 +783,34 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
                   byStock[k].push(h);
                 }
 
+                // Sort stock groups by selected sort key
+                const sortedByStock = Object.entries(byStock).sort(([, aLots], [, bLots]) => {
+                  const aVal  = aLots.reduce((s,h)=>s+(h.currentValue||0), 0);
+                  const bVal  = bLots.reduce((s,h)=>s+(h.currentValue||0), 0);
+                  if (sortBy === "gain_pct") {
+                    const aCost = aLots.reduce((s,h)=>s+(h.costBasisINR||h.principal||h.balance||0), 0);
+                    const bCost = bLots.reduce((s,h)=>s+(h.costBasisINR||h.principal||h.balance||0), 0);
+                    const aGp = aCost > 0 ? (aVal - aCost) / aCost * 100 : 0;
+                    const bGp = bCost > 0 ? (bVal - bCost) / bCost * 100 : 0;
+                    return bGp - aGp;
+                  }
+                  if (sortBy === "day_change") {
+                    const getSym = (lots) => {
+                      const h = lots[0];
+                      if (!h) return null;
+                      if (h.type === "us_stock") return h.symbol;
+                      if (h.type === "in_stock") return h.symbol && !/\.(NS|BO)$/i.test(h.symbol) ? h.symbol + ".NS" : h.symbol;
+                      if (h.type === "mf")       return h.schemeCode;
+                      return null;
+                    };
+                    const aPct = changeMap[getSym(aLots)] ?? 0;
+                    const bPct = changeMap[getSym(bLots)] ?? 0;
+                    return bPct - aPct;
+                  }
+                  // default: by value descending
+                  return bVal - aVal;
+                });
+
                 return (
                   <div key={type}>
                     <div onClick={() => toggle(typeKey)}
@@ -817,7 +845,7 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
 
                     {typeOpen && (
                       <div style={{ display:"flex", flexDirection:"column", gap:"8px", padding:"10px 14px" }}>
-                        {Object.entries(byStock).map(([sym, lots]) => {
+                        {sortedByStock.map(([sym, lots]) => {
                           const totalQty  = lots.reduce((s,h)=>s+(Number(h.quantity)||0), 0);
                           const totalCost = lots.reduce((s,h)=>s+(h.costBasisINR||h.principal||h.balance||0), 0);
                           const totalVal  = lots.reduce((s,h)=>s+(h.currentValue||0), 0);
@@ -911,12 +939,16 @@ function HoldingsView({ grouped, priceMap, usdinr, onDelete, onUpdateBalance, on
 
 export default function PortfolioTab({
   holdingsData, rsuData, incomeData, investmentsData, rsuGrants, liveData, fy,
+  personFilter: personFilterProp, onPersonFilterChange,
   onAddHolding, onDeleteHolding, onUpdateHolding, onUpdateHoldingsBatch, onUpsertHoldings,
   onMergeStockLots, onMergeMFLots,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
 }) {
   const [view,          setView]          = useState("overview");
-  const [personFilter,  setPersonFilter]  = useState("all"); // "all" | "Selva" | "Akshaya"
+  // Use prop if provided (persisted across tabs), else fall back to local state
+  const [personFilterLocal, setPersonFilterLocal] = useState("all");
+  const personFilter    = personFilterProp ?? personFilterLocal;
+  const setPersonFilter = (v) => { onPersonFilterChange?.(v); setPersonFilterLocal(v); };
   const [showAddForm,   setShowAddForm]   = useState(false);
   const [showCasImport,     setShowCasImport]     = useState(false);
   const [showTradebookImport, setShowTradebookImport] = useState(false);
@@ -927,6 +959,7 @@ export default function PortfolioTab({
   const [fetchedAt,    setFetchedAt]    = useState(null);
   const [toast,        setToast]        = useState(null);
   const [showDayBreakdown, setShowDayBreakdown] = useState(false);
+  const [holdingSort, setHoldingSort] = useState("value"); // "value" | "gain_pct" | "day_change"
   const toastTimerRef = useRef(null);
 
   const usdinr = liveData?.USDINR || 85;
@@ -1059,8 +1092,8 @@ export default function PortfolioTab({
     <button onClick={() => setView(id)} style={{
       padding:"8px 18px", borderRadius:"8px", border:"none", cursor:"pointer",
       fontSize:"13px", fontWeight:600,
-      background: view===id ? T.accent : "transparent",
-      color:      view===id ? T.bg     : T.textDim,
+      background: view===id ? T.cta : "transparent",
+      color:      view===id ? "#fff" : T.textDim,
     }}>{label}</button>
   );
 
@@ -1080,8 +1113,8 @@ export default function PortfolioTab({
               <button key={p} onClick={() => setPersonFilter(p)} style={{
                 padding:"5px 12px", border:"none", borderRadius:"6px", fontSize:"12px", fontWeight:600,
                 cursor:"pointer",
-                background: personFilter === p ? T.accent : "transparent",
-                color: personFilter === p ? T.bg
+                background: personFilter === p ? T.cta : "transparent",
+                color: personFilter === p ? "#fff"
                      : p === "Selva" ? T.selva
                      : p === "Akshaya" ? T.akshaya
                      : T.textDim,
@@ -1168,17 +1201,29 @@ export default function PortfolioTab({
             {fetching ? "…" : "↻"}
           </button>
         </div>
-        {/* Row 2: action buttons (holdings only) */}
+        {/* Row 2: sort + action buttons (holdings only) */}
         {view==="holdings" && (
-          <div style={{ display:"flex", gap:"8px", marginTop:"10px", flexWrap:"wrap" }}>
+          <div style={{ display:"flex", gap:"8px", marginTop:"10px", flexWrap:"wrap", alignItems:"center" }}>
+            {/* Sort toggle */}
+            <div style={{ display:"flex", background:T.card, borderRadius:"8px", padding:"2px", gap:"2px", flexShrink:0 }}>
+              {[["value","Value"],["gain_pct","Gain %"],["day_change","1D"]].map(([k,lbl]) => (
+                <button key={k} onClick={() => setHoldingSort(k)} style={{
+                  padding:"5px 11px", border:"none", borderRadius:"6px", fontSize:"11px", fontWeight:600,
+                  cursor:"pointer", transition:"all 0.15s",
+                  background: holdingSort === k ? T.cta : "transparent",
+                  color:      holdingSort === k ? "#fff" : T.textDim,
+                }}>{lbl}</button>
+              ))}
+            </div>
+            <div style={{ flex:1 }}/>
             <button onClick={() => setShowTradebookImport(true)}
-              style={{ flex:1, padding:"8px 14px", background:T.card, border:`1px solid ${T.border}`,
+              style={{ padding:"8px 14px", background:T.card, border:`1px solid ${T.border}`,
                 borderRadius:"8px", color:T.textDim, fontSize:"12px", fontWeight:600, cursor:"pointer" }}>
               ⬆ Tradebook
             </button>
             <button onClick={() => setShowAddForm(v => !v)}
-              style={{ flex:1, padding:"8px 14px", background:T.accent, border:"none",
-                borderRadius:"8px", color:T.bg, fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
+              style={{ padding:"8px 16px", background:T.cta, border:"none",
+                borderRadius:"8px", color:"#fff", fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
               {showAddForm ? "✕ Cancel" : "+ Add Holding"}
             </button>
           </div>
@@ -1223,6 +1268,7 @@ export default function PortfolioTab({
       )}
       {view==="holdings" && (
         <HoldingsView grouped={grouped} priceMap={priceMap} usdinr={usdinr}
+          sortBy={holdingSort} changeMap={changeMap}
           onDelete={onDeleteHolding}
           onAdd={onAddHolding}
           onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}

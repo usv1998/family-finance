@@ -81,15 +81,28 @@ export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDele
             {upcoming.map((v,i) => {
               const personCol = v.person === "Selva" ? T.selva : T.akshaya;
               const daysAway  = Math.ceil((new Date(v.vest_date) - Date.now()) / 86400000);
+              // Find the grant to get tax_pct, compute estimated net value
+              const grant     = (rsuGrants||[]).find(g => g.grant_id === v.grantId);
+              const taxPct    = grant?.tax_pct ?? 35;
+              const livePrice = liveData?.[v.stock] ?? 0;
+              const usdinr    = liveData?.USDINR ?? 85;
+              const netUnits  = Math.round(v.units * (1 - taxPct / 100));
+              const estINR    = livePrice > 0 ? Math.round(netUnits * livePrice * usdinr) : null;
+              const fmtCrLakh = (n) => n >= 1e7 ? `₹${(n/1e7).toFixed(2)}Cr` : n >= 1e5 ? `₹${(n/1e5).toFixed(1)}L` : `₹${Math.round(n/1000)}K`;
               return (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:"6px", padding:"5px 10px",
-                  background:T.card, borderRadius:"8px", border:`1px solid ${T.border}`, fontSize:"12px" }}>
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:"6px", padding:"6px 12px",
+                  background:T.card, borderRadius:"10px", border:`1px solid ${daysAway<=30?T.amber+"55":T.border}`, fontSize:"12px" }}>
                   <span style={{ color:personCol, fontWeight:700 }}>{v.stock}</span>
-                  <span style={{ color:T.text }}>{v.units} units</span>
+                  <span style={{ color:T.text }}>{v.units}u</span>
                   <span style={{ color:T.textMuted }}>
                     {new Date(v.vest_date).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})}
                   </span>
-                  <span style={{ color:daysAway<=30?T.amber:T.textMuted, fontSize:"10px", fontWeight:600 }}>
+                  {estINR && (
+                    <span style={{ color:T.accent, fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:"11px" }}>
+                      ~{fmtCrLakh(estINR)} net
+                    </span>
+                  )}
+                  <span style={{ color:daysAway<=30?T.amber:T.textMuted, fontSize:"10px", fontWeight:700 }}>
                     {daysAway}d
                   </span>
                 </div>

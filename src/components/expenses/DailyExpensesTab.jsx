@@ -267,6 +267,25 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx, onEditTx
 
   const avgPerDay = monthTotal / Math.max(1, daysInMonth(selMonth));
 
+  // Spending pace — only meaningful for the current month
+  const spendingPace = useMemo(() => {
+    const today      = todayISO();
+    const curMonth   = today.slice(0, 7);
+    if (selMonth !== curMonth) return null;
+    const dayOfMonth = parseInt(today.slice(8, 10), 10);
+    const totalDays  = daysInMonth(selMonth);
+    const pctDays    = dayOfMonth / totalDays;
+    const projected  = totalDays > 0 ? Math.round(monthTotal / Math.max(dayOfMonth, 1) * totalDays) : 0;
+    const pctSpend   = projected > 0 ? monthTotal / projected : 0; // vs projected
+    // Simple pace vs "uniform" spend — over 110% = over pace
+    const status = pctDays > 0 && monthTotal > 0
+      ? (monthTotal / (avgPerDay * dayOfMonth)) > 1.1 ? "over"
+      : (monthTotal / (avgPerDay * dayOfMonth)) < 0.85 ? "under"
+      : "on"
+      : "on";
+    return { dayOfMonth, totalDays, pctDays, projected, pctSpend, status };
+  }, [selMonth, monthTotal, avgPerDay]);
+
   const handleSave = (tx) => {
     if (sheet && typeof sheet === "object") {
       onEditTx(tx);
@@ -304,6 +323,65 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx, onEditTx
           </div>
         )}
       </div>
+
+      {/* ── Spending pace bar (current month only) ── */}
+      {spendingPace && (
+        <div style={{
+          background:T.surface, borderRadius:"12px", border:`1px solid ${T.border}`,
+          padding:"12px 16px", marginBottom:"16px",
+        }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
+            <div style={{ fontSize:"12px", color:T.textDim, fontWeight:600 }}>
+              Day <span style={{ color:T.text, fontWeight:800 }}>{spendingPace.dayOfMonth}</span>
+              {" of "}<span style={{ color:T.text }}>{spendingPace.totalDays}</span>
+              {" · "}Projected{" "}
+              <span style={{ color:T.text, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                {fmtINR(spendingPace.projected)}
+              </span>
+            </div>
+            <div style={{
+              fontSize:"11px", fontWeight:700, padding:"2px 8px", borderRadius:"6px",
+              background: spendingPace.status === "over"  ? `${T.amber}18`
+                        : spendingPace.status === "under" ? `${T.accent}18`
+                        : `${T.blue}18`,
+              color: spendingPace.status === "over"  ? T.amber
+                   : spendingPace.status === "under" ? T.accent
+                   : T.blue,
+            }}>
+              {spendingPace.status === "over" ? "⚠ Slightly over pace"
+               : spendingPace.status === "under" ? "✓ Under pace"
+               : "✓ On track"}
+            </div>
+          </div>
+          {/* Dual bar: days elapsed (blue) behind spending pace (colour) */}
+          <div style={{ position:"relative", height:"6px", background:T.border, borderRadius:"4px", overflow:"hidden" }}>
+            {/* Days elapsed */}
+            <div style={{
+              position:"absolute", left:0, top:0, bottom:0,
+              width:`${spendingPace.pctDays * 100}%`,
+              background:`${T.blue}40`, borderRadius:"4px",
+              transition:"width 0.4s ease",
+            }}/>
+            {/* Money spent vs projected */}
+            <div style={{
+              position:"absolute", left:0, top:0, bottom:0,
+              width:`${Math.min(100, spendingPace.pctSpend * 100)}%`,
+              background: spendingPace.status === "over"  ? T.amber
+                        : spendingPace.status === "under" ? T.accent
+                        : T.blue,
+              borderRadius:"4px", transition:"width 0.4s ease",
+            }}/>
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", marginTop:"5px" }}>
+            <span style={{ fontSize:"10px", color:T.textMuted }}>
+              <span style={{ color:`${T.blue}88` }}>▬</span> {Math.round(spendingPace.pctDays*100)}% of month elapsed
+            </span>
+            <span style={{ fontSize:"10px", color:T.textMuted }}>
+              {Math.round(spendingPace.pctSpend*100)}% of projected spent
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Month selector ── */}
       <div style={{ marginBottom:"16px" }}>

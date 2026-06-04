@@ -38,6 +38,14 @@ export default function FamilyFinanceTracker() {
   const [authReady,      setAuthReady]      = useState(!supabase); // true immediately if no supabase
   const [syncing,        setSyncing]        = useState(false);
   const [locked,         setLocked]         = useState(false);
+  // Person filter — persisted across tabs via localStorage
+  const [personFilter, setPersonFilter] = useState(() => {
+    try { return localStorage.getItem("dk-person-filter") || "all"; } catch { return "all"; }
+  });
+  const updatePersonFilter = (f) => {
+    setPersonFilter(f);
+    try { localStorage.setItem("dk-person-filter", f); } catch {}
+  };
   const saveRef     = useRef(null);
   const userRef     = useRef(null);
   const restoreRef  = useRef(null);
@@ -495,6 +503,43 @@ export default function FamilyFinanceTracker() {
     }, 600);
   };
 
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const TAB_IDS = TABS.filter(t => t.active).map(t => t.id);
+    const handler = (e) => {
+      // Ignore when typing in an input/textarea/select
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const isMod = e.metaKey || e.ctrlKey;
+      if (isMod) {
+        const n = parseInt(e.key, 10);
+        if (n >= 1 && n <= TAB_IDS.length) {
+          e.preventDefault();
+          setActiveTab(TAB_IDS[n - 1]);
+        }
+        // Cmd/Ctrl + ← / → to cycle FY
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          setFY(prev => {
+            const opts = getFYOptions();
+            const idx  = opts.indexOf(prev);
+            return idx > 0 ? opts[idx - 1] : prev;
+          });
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          setFY(prev => {
+            const opts = getFYOptions();
+            const idx  = opts.indexOf(prev);
+            return idx < opts.length - 1 ? opts[idx + 1] : prev;
+          });
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   if(!authReady || (supabase && !user)) return supabase && !user && authReady ? <LoginScreen/> : <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
   if(loading) return <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
   if(locked) return (
@@ -568,16 +613,18 @@ export default function FamilyFinanceTracker() {
             </div>
           </div>
           <div style={{ display:"flex", gap:"4px", overflowX:"auto", paddingBottom:"4px" }}>
-            {TABS.map(tab=>(
-              <button key={tab.id} onClick={()=>tab.active&&setActiveTab(tab.id)} style={{
-                padding:"10px 18px", borderRadius:"8px 8px 0 0", border:"none",
-                fontSize:"13px", fontWeight:600, cursor:tab.active?"pointer":"not-allowed",
-                whiteSpace:"nowrap", transition:"all 0.2s",
-                background:activeTab===tab.id?T.surface:"transparent",
-                color:!tab.active?T.textMuted:activeTab===tab.id?T.accent:T.textDim,
-                opacity:tab.active?1:0.5,
-                borderBottom:activeTab===tab.id?`2px solid ${T.accent}`:"2px solid transparent"
-              }}>{tab.label}{!tab.active&&" 🔒"}</button>
+            {TABS.map((tab, idx)=>(
+              <button key={tab.id} onClick={()=>tab.active&&setActiveTab(tab.id)}
+                title={`${tab.label}${tab.active ? ` (⌘${idx+1})` : " — coming soon"}`}
+                style={{
+                  padding:"10px 18px", borderRadius:"8px 8px 0 0", border:"none",
+                  fontSize:"13px", fontWeight:600, cursor:tab.active?"pointer":"not-allowed",
+                  whiteSpace:"nowrap", transition:"all 0.2s",
+                  background:activeTab===tab.id?T.surface:"transparent",
+                  color:!tab.active?T.textMuted:activeTab===tab.id?T.cta:T.textDim,
+                  opacity:tab.active?1:0.5,
+                  borderBottom:activeTab===tab.id?`2px solid ${T.cta}`:"2px solid transparent"
+                }}>{tab.label}{!tab.active&&" 🔒"}</button>
             ))}
           </div>
         </div>
@@ -637,6 +684,8 @@ export default function FamilyFinanceTracker() {
             rsuGrants={rsuGrants}
             liveData={liveData}
             fy={fy}
+            personFilter={personFilter}
+            onPersonFilterChange={updatePersonFilter}
             onAddHolding={addHolding}
             onDeleteHolding={deleteHolding}
             onUpdateHolding={updateHolding}
