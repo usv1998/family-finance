@@ -909,22 +909,31 @@ function HoldingsView({ grouped, priceMap, usdinr, sortBy = "value", changeMap =
                                     })}
                                   </div>
                                 )}
-                                {/* Goal earmarking — all holding types */}
-                                {goals.length > 0 && !lots.every(l => l.derived) && onUpdateHoldingGoal && (
+                                {/* Goal earmarking — all holding types (stored + derived) */}
+                                {goals.filter(g => g.termType === "long").length > 0 && onUpdateHoldingGoal && (
                                   <div onClick={e => e.stopPropagation()}
                                     style={{ display:"flex", gap:"4px", alignItems:"center", flexWrap:"wrap" }}>
                                     <span style={{ fontSize:"9px", color:T.textMuted, fontWeight:700, letterSpacing:"0.3px" }}>GOAL</span>
                                     {goals.filter(g => g.termType === "long").map(g => {
-                                      const currentTag = lots[0]?.goalTag;
+                                      // Use consensus tag: if all lots share a tag use it, otherwise none
+                                      const storedLots = lots.filter(l => !l.derived);
+                                      const currentTag = storedLots.length > 0
+                                        ? (storedLots.every(l => l.goalTag === storedLots[0]?.goalTag) ? storedLots[0]?.goalTag : null)
+                                        : null;
                                       const active = currentTag === g.id;
+                                      // Pass lot IDs directly — avoids sym/schemeCode mismatch for MFs
+                                      const lotIds = storedLots.map(l => l.id);
                                       return (
                                         <button key={g.id}
-                                          onClick={() => onUpdateHoldingGoal(sym, lots[0]?.person, active ? null : g.id)}
+                                          onClick={() => lotIds.length && onUpdateHoldingGoal(lotIds, active ? null : g.id)}
                                           title={active ? `Remove from ${g.name}` : `Tag to ${g.name}`}
-                                          style={{ padding:"2px 7px", borderRadius:"5px", border:`1px solid ${active ? T.cta : T.border}`,
-                                            cursor:"pointer", fontSize:"10px", fontWeight:700,
+                                          style={{ padding:"2px 7px", borderRadius:"5px",
+                                            border:`1px solid ${active ? T.cta : T.border}`,
+                                            cursor: lotIds.length ? "pointer" : "default",
+                                            fontSize:"10px", fontWeight:700,
                                             background: active ? T.ctaDim : "transparent",
-                                            color:      active ? T.cta    : T.textMuted }}>
+                                            color:      active ? T.cta    : T.textMuted,
+                                            opacity:    lotIds.length ? 1 : 0.4 }}>
                                           {active ? "✓ " : ""}{g.name}
                                         </button>
                                       );
@@ -1305,10 +1314,11 @@ export default function PortfolioTab({
               .map(h => ({ id: h.id, changes: { categoryOverride: cat || undefined } }));
             if (updates.length > 0) onUpdateHoldingsBatch(updates);
           }}
-          onUpdateHoldingGoal={(sym, person, goalId) => {
-            // Tag all lots of this symbol (or schemeCode for MFs) to the goal
+          onUpdateHoldingGoal={(lotIds, goalId) => {
+            // lotIds: array of holding IDs to tag (all stored lots for this fund/stock)
+            const idSet = new Set(lotIds);
             const updates = holdingsData
-              .filter(h => (h.symbol === sym || h.schemeCode === sym) && h.person === person)
+              .filter(h => idSet.has(h.id))
               .map(h => ({ id: h.id, changes: { goalTag: goalId ?? null } }));
             if (updates.length > 0) onUpdateHoldingsBatch(updates);
           }}
