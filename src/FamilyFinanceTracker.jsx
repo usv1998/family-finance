@@ -654,7 +654,14 @@ export default function FamilyFinanceTracker() {
           />
         )}
         {activeTab==="expenses"&&(
-          <ExpensesTab expensesData={expensesData} fy={fy} onUpdate={updateExpenses}/>
+          <ExpensesTab
+            expensesData={expensesData}
+            fy={fy}
+            onUpdate={updateExpenses}
+            incomeData={incomeData}
+            txData={txData}
+            investmentsData={investmentsData}
+          />
         )}
         {activeTab==="daily"&&(
           <DailyExpensesTab
@@ -662,6 +669,8 @@ export default function FamilyFinanceTracker() {
             onAddTx={addTx}
             onDeleteTx={deleteTx}
             onEditTx={editTx}
+            expensesData={expensesData}
+            fy={fy}
           />
         )}
         {activeTab==="retirement"&&(

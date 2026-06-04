@@ -217,9 +217,18 @@ function TxSheet({ categories, initial, onSave, onClose }) {
   );
 }
 
+// Default committed IDs (mirrors ExpensesTab) — used when no saved data exists
+const DEFAULT_COMMITTED_IDS = new Set(["rent", "utilities"]);
+
 // ── Main tab ───────────────────────────────────────────────────────────────
-export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx, onEditTx }) {
-  const categories = DEFAULT_CATEGORIES;
+export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx, onEditTx, expensesData, fy }) {
+  // Build categories with committed flag from saved budget data (falls back to defaults)
+  const savedCats = expensesData?.[fy]?.categories || [];
+  const savedCatMap = Object.fromEntries(savedCats.map(c => [c.id, c]));
+  const categories = DEFAULT_CATEGORIES.map(c => ({
+    ...c,
+    committed: savedCatMap[c.id]?.committed ?? DEFAULT_COMMITTED_IDS.has(c.id),
+  }));
   const catById = Object.fromEntries(categories.map(c => [c.id, c]));
 
   const [sheet, setSheet]         = useState(null); // null | "add" | tx object (edit)
@@ -312,6 +321,30 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx, onEditTx
             <div style={{ fontSize:"12px", color:T.textMuted, marginTop:"6px" }}>
               avg {fmtINR(Math.round(avgPerDay))}/day · {allMonthTx.length} transactions
             </div>
+            {/* Committed vs flexible mini split */}
+            {monthTotal > 0 && (() => {
+              const committedTotal = allMonthTx
+                .filter(t => catById[t.categoryId]?.committed)
+                .reduce((s,t) => s + Number(t.amount), 0);
+              const flexTotal = monthTotal - committedTotal;
+              if (committedTotal === 0 && flexTotal === 0) return null;
+              return (
+                <div style={{ display:"flex", gap:"10px", marginTop:"8px" }}>
+                  {committedTotal > 0 && (
+                    <span style={{ fontSize:"10px", color:T.blue, fontWeight:700,
+                      background:`${T.blue}15`, padding:"2px 7px", borderRadius:"5px" }}>
+                      🔒 Fixed {fmtINR(committedTotal)}
+                    </span>
+                  )}
+                  {flexTotal > 0 && (
+                    <span style={{ fontSize:"10px", color:T.purple, fontWeight:700,
+                      background:`${T.purple}15`, padding:"2px 7px", borderRadius:"5px" }}>
+                      ✦ Flexible {fmtINR(flexTotal)}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           {catTotals.length > 0 && (
             <DonutChart data={catTotals.slice(0,6)} total={monthTotal} size={90}/>
@@ -417,14 +450,22 @@ export default function DailyExpensesTab({ txData, onAddTx, onDeleteTx, onEditTx
             background: !filterCat ? T.accent : T.card,
             color: !filterCat ? T.bg : T.textMuted,
           }}>All</button>
-          {catTotals.map(c => (
-            <button key={c.id} onClick={() => setFilterCat(f => f === c.id ? "" : c.id)} style={{
-              padding:"6px 14px", borderRadius:"20px", border:"none", cursor:"pointer",
-              fontSize:"12px", fontWeight:700,
-              background: filterCat === c.id ? c.color : T.card,
-              color: filterCat === c.id ? "#fff" : T.textMuted,
-            }}>{c.label}</button>
-          ))}
+          {catTotals.map(c => {
+            const isCommitted = catById[c.id]?.committed;
+            return (
+              <button key={c.id} onClick={() => setFilterCat(f => f === c.id ? "" : c.id)} style={{
+                padding:"6px 14px", borderRadius:"20px",
+                border: isCommitted ? `1px solid ${T.blue}44` : "none",
+                cursor:"pointer", fontSize:"12px", fontWeight:700,
+                background: filterCat === c.id ? c.color : T.card,
+                color: filterCat === c.id ? "#fff" : T.textMuted,
+                display:"flex", alignItems:"center", gap:"4px",
+              }}>
+                {isCommitted && <span style={{ fontSize:"9px" }}>🔒</span>}
+                {c.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
