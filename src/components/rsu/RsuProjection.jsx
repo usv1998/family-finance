@@ -40,9 +40,25 @@ function SliderRow({ label, value, min, max, step, fmt, onChange, sub }) {
   );
 }
 
+// Indian FY helpers
+// Apr 2025 – Mar 2026 → fyYear = 2025, label = "FY25-26"
+function vestDateToFyYear(dateStr) {
+  const d = new Date(dateStr);
+  const m = d.getMonth() + 1; // 1-12
+  const y = d.getFullYear();
+  return m >= 4 ? y : y - 1;
+}
+function fyLabel(fyYear) {
+  return `FY${String(fyYear).slice(2)}-${String(fyYear + 1).slice(2)}`;
+}
+function currentFyYear() {
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  return m >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
 export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilter }) {
-  const today     = new Date();
-  const thisYear  = today.getFullYear();
+  const thisFY = currentFyYear(); // e.g. 2025 for FY25-26
 
   // ── Assumptions ──────────────────────────────────────────────────────────────
   const [msftPrice,    setMsftPrice]    = useState(Math.round(liveData?.MSFT || 420));
@@ -56,51 +72,51 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
   const startPrices = { MSFT: msftPrice, NVDA: nvdaPrice };
   const growthPcts  = { MSFT: msftGrowth / 100, NVDA: nvdaGrowth / 100 };
 
-  // ── Compute year-by-year projection ──────────────────────────────────────────
+  // ── Compute FY-by-FY projection ───────────────────────────────────────────────
   const yearData = useMemo(() => {
-    const map = {}; // { year: { MSFT: { grossUnits, netUnits, valueINR }, NVDA: {...} } }
+    const emptySlot = () => ({ MSFT: { grossUnits:0, netUnits:0, valueINR:0 },
+                               NVDA: { grossUnits:0, netUnits:0, valueINR:0 } });
 
-    for (let yr = thisYear; yr < thisYear + projYears; yr++) {
-      map[yr] = { MSFT: { grossUnits: 0, netUnits: 0, valueINR: 0 },
-                  NVDA: { grossUnits: 0, netUnits: 0, valueINR: 0 } };
-    }
+    // Pre-populate all FY slots so empty years still show
+    const map = {};
+    for (let i = 0; i < projYears; i++) map[thisFY + i] = emptySlot();
 
     for (const grant of rsuGrants || []) {
-      // Apply person filter (same logic as portfolio filter)
       if (personFilter && personFilter !== "all" && grant.person !== personFilter) continue;
 
-      const taxPct   = grant.tax_pct ?? 35;
-      const netFact  = 1 - taxPct / 100;
-      const stock    = grant.stock;
-      if (!STOCK_COLORS[stock]) continue; // only MSFT / NVDA
+      const taxPct  = grant.tax_pct ?? 35;
+      const netFact = 1 - taxPct / 100;
+      const stock   = grant.stock;
+      if (!STOCK_COLORS[stock]) continue;
 
-      const schedule = generateVestSchedule(grant);
-      for (const v of schedule) {
-        const vestYear = new Date(v.vest_date).getFullYear();
-        if (vestYear < thisYear || vestYear >= thisYear + projYears) continue;
-        if (isConfirmed(v.vest_date, grant.person, stock, rsuData)) continue; // skip already vested
+      for (const v of generateVestSchedule(grant)) {
+        const fyYear = vestDateToFyYear(v.vest_date);
+        if (fyYear < thisFY || fyYear >= thisFY + projYears) continue;
+        if (isConfirmed(v.vest_date, grant.person, stock, rsuData)) continue;
 
         const grossUnits = v.units;
         const netUnits   = Math.round(grossUnits * netFact);
-        const yearsOut   = vestYear - thisYear;
+        // Price grows from today — 1 FY out = 1 year of compounding
+        const yearsOut   = fyYear - thisFY;
         const projPrice  = startPrices[stock] * Math.pow(1 + growthPcts[stock], yearsOut);
         const valueINR   = netUnits * projPrice * usdInr;
 
-        if (!map[vestYear]) map[vestYear] = { MSFT: { grossUnits:0, netUnits:0, valueINR:0 }, NVDA: { grossUnits:0, netUnits:0, valueINR:0 } };
-        map[vestYear][stock].grossUnits += grossUnits;
-        map[vestYear][stock].netUnits   += netUnits;
-        map[vestYear][stock].valueINR   += valueINR;
+        if (!map[fyYear]) map[fyYear] = emptySlot();
+        map[fyYear][stock].grossUnits += grossUnits;
+        map[fyYear][stock].netUnits   += netUnits;
+        map[fyYear][stock].valueINR   += valueINR;
       }
     }
 
     return Object.entries(map)
-      .map(([yr, byStock]) => ({
-        year: Number(yr),
+      .map(([fyYr, byStock]) => ({
+        fyYear: Number(fyYr),
+        label:  fyLabel(Number(fyYr)),          // "FY25-26"
         byStock,
         total: Object.values(byStock).reduce((s, v) => s + v.valueINR, 0),
       }))
-      .sort((a, b) => a.year - b.year);
-  }, [rsuGrants, rsuData, personFilter, msftPrice, nvdaPrice, usdInr, msftGrowth, nvdaGrowth, projYears, thisYear]);
+      .sort((a, b) => a.fyYear - b.fyYear);
+  }, [rsuGrants, rsuData, personFilter, msftPrice, nvdaPrice, usdInr, msftGrowth, nvdaGrowth, projYears, thisFY]);
 
   // ── SVG stacked bar chart ─────────────────────────────────────────────────────
   const W = 680, H = 240, PAD_L = 60, PAD_R = 20, PAD_T = 20, PAD_B = 40;
@@ -134,6 +150,7 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
               <span style={{ marginLeft: "8px", color: personFilter === "Selva" ? T.selva : T.akshaya,
                 fontWeight: 700 }}>· {personFilter} only</span>
             )}
+            <span style={{ marginLeft: "8px", color: T.textMuted }}>· Apr–Mar Indian FY</span>
           </div>
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
@@ -150,13 +167,13 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
       {/* Summary cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "10px", marginBottom: "20px" }}>
         {[
-          { label: `Total ${projYears}-yr RSU Value`, value: fmtL(totalAllYears), color: T.accent, featured: true },
+          { label: `Total ${projYears}-FY RSU Value`, value: fmtL(totalAllYears), color: T.accent, featured: true },
           ...STOCKS_ORDER.map(s => ({
             label: `${s} Total`,
             value: fmtL(yearData.reduce((sum, d) => sum + d.byStock[s].valueINR, 0)),
             color: STOCK_COLORS[s],
           })),
-          { label: "Avg / Year", value: fmtL(totalAllYears / Math.max(projYears, 1)), color: T.textDim },
+          { label: "Avg / FY", value: fmtL(totalAllYears / Math.max(projYears, 1)), color: T.textDim },
         ].map((c, i) => (
           <div key={i} style={{
             background: c.featured ? `linear-gradient(135deg,rgba(34,197,94,0.08),${T.card})` : T.card,
@@ -209,7 +226,7 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
                 let   yOff    = PAD_T + chartH;
 
                 return (
-                  <g key={d.year}
+                  <g key={d.fyYear}
                     onMouseEnter={() => setHovered(i)}
                     style={{ cursor: "pointer" }}>
 
@@ -232,9 +249,9 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
                       );
                     })}
 
-                    {/* Year label */}
+                    {/* FY label */}
                     <text x={x + barW / 2} y={PAD_T + chartH + 14} textAnchor="middle"
-                      fontSize="10" fill={T.textDim} fontWeight={isHov ? "700" : "400"}>{d.year}</text>
+                      fontSize="9" fill={T.textDim} fontWeight={isHov ? "700" : "400"}>{d.label}</text>
 
                     {/* Total label on top */}
                     {d.total > 0 && (
@@ -262,7 +279,7 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
                   zIndex: 20, pointerEvents: "none", minWidth: "180px",
                   boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
                 }}>
-                  <div style={{ fontWeight: 800, color: T.accent, marginBottom: "8px" }}>{d.year}</div>
+                  <div style={{ fontWeight: 800, color: T.accent, marginBottom: "8px" }}>{d.label}</div>
                   {STOCKS_ORDER.map(s => {
                     const sd = d.byStock[s];
                     if (!sd.grossUnits) return null;
@@ -323,12 +340,13 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
 
           <SliderRow label="MSFT Annual Growth" value={msftGrowth} min={0} max={40} step={1}
             fmt={v => `${v}%/yr`} onChange={setMsftGrowth}
-            sub={`$${msftPrice} → $${Math.round(msftPrice * Math.pow(1 + msftGrowth / 100, projYears))} in ${projYears}yr`}/>
+            sub={`$${msftPrice} → $${Math.round(msftPrice * Math.pow(1 + msftGrowth / 100, projYears))} by ${fyLabel(thisFY + projYears - 1)}`}/>
           <SliderRow label="NVDA Annual Growth" value={nvdaGrowth} min={0} max={60} step={1}
             fmt={v => `${v}%/yr`} onChange={setNvdaGrowth}
-            sub={`$${nvdaPrice} → $${Math.round(nvdaPrice * Math.pow(1 + nvdaGrowth / 100, projYears))} in ${projYears}yr`}/>
+            sub={`$${nvdaPrice} → $${Math.round(nvdaPrice * Math.pow(1 + nvdaGrowth / 100, projYears))} by ${fyLabel(thisFY + projYears - 1)}`}/>
           <SliderRow label="Projection Horizon" value={projYears} min={1} max={8} step={1}
-            fmt={v => `${v} yr`} onChange={setProjYears}/>
+            fmt={v => `${v} FY`} onChange={setProjYears}
+            sub={`${fyLabel(thisFY)} → ${fyLabel(thisFY + projYears - 1)}`}/>
 
           <div style={{ borderTop: `1px solid ${T.border}`, margin: "14px 0" }}/>
           <div style={{ fontSize: "10px", color: T.textMuted, lineHeight: 1.6 }}>
@@ -353,7 +371,7 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", minWidth: "700px" }}>
               <thead>
                 <tr style={{ background: T.surface }}>
-                  {["Year",
+                  {["FY",
                     "MSFT Gross", "MSFT Net", `MSFT Price ($)`, "MSFT Value",
                     "NVDA Gross", "NVDA Net", `NVDA Price ($)`, "NVDA Value",
                     "Total"].map((h, i) => (
@@ -369,18 +387,18 @@ export default function RsuProjection({ rsuGrants, rsuData, liveData, personFilt
               </thead>
               <tbody>
                 {yearData.map((d, ri) => {
-                  const yearsOut    = d.year - thisYear;
+                  const yearsOut    = d.fyYear - thisFY;
                   const msftProjPx  = Math.round(msftPrice * Math.pow(1 + msftGrowth / 100, yearsOut));
                   const nvdaProjPx  = Math.round(nvdaPrice * Math.pow(1 + nvdaGrowth / 100, yearsOut));
                   const isHov       = hovered === ri;
                   return (
-                    <tr key={d.year}
+                    <tr key={d.fyYear}
                       onMouseEnter={() => setHovered(ri)}
                       onMouseLeave={() => setHovered(null)}
                       style={{ borderBottom: `1px solid ${T.border}22`,
                         background: isHov ? `${T.accent}08` : "transparent",
                         cursor: "default" }}>
-                      <td style={{ padding: "9px 14px", fontWeight: 700, color: T.text }}>{d.year}</td>
+                      <td style={{ padding: "9px 14px", fontWeight: 700, color: T.text }}>{d.label}</td>
                       {/* MSFT */}
                       <td style={{ padding: "9px 14px", textAlign: "right", color: T.textDim, fontFamily: "monospace" }}>
                         {d.byStock.MSFT.grossUnits || "—"}
