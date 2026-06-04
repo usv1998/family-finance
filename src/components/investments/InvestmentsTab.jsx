@@ -47,7 +47,8 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
     });
     return { person:p, monthly, opening, empYTD, total: opening + empYTD, running };
   });
-  const epfGrand = epfByPerson.reduce((s,e)=>s+e.total, 0);
+  const epfGrand        = epfByPerson.reduce((s,e)=>s+e.total, 0);
+  const epfFYContrib    = epfByPerson.reduce((s,e)=>s+e.empYTD, 0); // current FY only
 
   // ── US Stocks calculations (RSU + ESPP) ──
   const usStocksByPerson = PERSONS.map(p => {
@@ -92,112 +93,11 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
 
   return (
     <div>
-      {/* ── Top summary ── */}
+      {/* ── Top summary (current FY only) ── */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:"10px", marginBottom:"20px" }}>
-        <SumCard label="EPF Corpus (FY)"  value={fmtINR(epfGrand)}  sub={`Opening ${fmtINR(epfOpening.Selva+epfOpening.Akshaya)}`} color={T.blue}   />
-        <SumCard label="US Stocks (FY)"   value={fmtINR(usStocksGrand)} sub="RSU + ESPP net value at vest" color={T.amber}  />
-        <SumCard label="Total Investments" value={fmtINR(epfGrand+usStocksGrand)} color={T.white} />
-      </div>
-
-      {/* ── EPF Section ── */}
-      <div style={sec}>
-        <div style={secH}>
-          <span>Provident Fund (EPF)</span>
-          <span style={{ fontSize:"11px", color:T.textMuted }}>Employee + Employer · 8.25% p.a.</span>
-        </div>
-
-        <div style={{ display:"flex", flexDirection:"column", gap:"12px", marginBottom:"16px", padding:"14px", background:T.bg, borderRadius:"10px" }}>
-          <div style={{ fontSize:"11px", color:T.textDim, fontWeight:600, gridColumn:"1/-1", marginBottom:"4px" }}>OPENING BALANCE (Start of FY)</div>
-          {PERSONS.map(p=>(
-            <div key={p} style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-              <PersonBadge p={p}/>
-              <input type="number" value={epfOpening[p]||""} placeholder="e.g. 363580"
-                onChange={e=>updateInv({epfOpening:{...epfOpening,[p]:Number(e.target.value)}})}
-                style={{...inp, fontFamily:"'JetBrains Mono',monospace", flex:1}}
-                onFocus={e=>e.target.style.borderColor=T.accent} onBlur={e=>e.target.style.borderColor=T.border}
-              />
-            </div>
-          ))}
-        </div>
-
-        {epfByPerson.map(e=>(
-          <div key={e.person} style={{ marginBottom:"16px", padding:"14px", background:T.bg, borderRadius:"10px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
-                <span style={{ fontSize:"13px", fontWeight:700, color:e.person==="Selva"?T.selva:T.akshaya }}>{e.person}</span>
-                <span style={{ fontSize:"11px", color:T.textMuted }}>{EMPLOYER[e.person]}</span>
-              </div>
-              <div style={{ display:"flex", gap:"12px" }}>
-                <div style={{ textAlign:"right" }}><div style={{ fontSize:"10px", color:T.textMuted }}>FY Contributions</div><div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.blue, fontWeight:700 }}>{fmtINR(e.empYTD)}</div></div>
-                <div style={{ textAlign:"right" }}><div style={{ fontSize:"10px", color:T.textMuted }}>Corpus (incl. opening)</div><div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:700 }}>{fmtINR(e.total)}</div></div>
-              </div>
-            </div>
-            <div style={{ overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11px", minWidth:"700px" }}>
-                <thead>
-                  <tr>
-                    <td style={{ padding:"4px 8px", color:T.textMuted, fontWeight:600 }}>Component</td>
-                    {MONTHS.map(m=><td key={m} style={{ padding:"4px 8px", textAlign:"right", color:T.textMuted, fontWeight:600 }}>{m}</td>)}
-                    <td style={{ padding:"4px 8px", textAlign:"right", color:T.accent, fontWeight:600 }}>Total</td>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ padding:"4px 8px", color:T.textDim }}>Total Contribution</td>
-                    {e.monthly.map((v,i)=><td key={i} style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:v>0?T.text:T.textMuted }}>{v>0?fmtINR(v):"—"}</td>)}
-                    <td style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.blue, fontWeight:700 }}>{fmtINR(e.empYTD)}</td>
-                  </tr>
-                  <tr style={{ borderTop:`1px solid ${T.border}` }}>
-                    <td style={{ padding:"4px 8px", color:T.accent, fontWeight:700 }}>Running Corpus</td>
-                    {e.running.map((v,i)=><td key={i} style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:600, fontSize:"10px" }}>{fmtINR(v)}</td>)}
-                    <td style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:700 }}>{fmtINR(e.total)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── US Stocks (RSU + ESPP) ── */}
-      <div style={sec}>
-        <div style={secH}>
-          <span>US Stocks — RSU &amp; ESPP</span>
-          <span style={{ fontSize:"11px", color:T.textMuted }}>Net shares · value at vest date</span>
-        </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
-          {usStocksByPerson.map(e=>(
-            <div key={e.person} style={{ padding:"14px", background:T.bg, borderRadius:"10px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
-                <span style={{ fontSize:"13px", fontWeight:700, color:e.person==="Selva"?T.selva:T.akshaya }}>{e.person} · {PERSON_STOCK[e.person]}</span>
-                <span style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:700 }}>{fmtINR(e.total)}</span>
-              </div>
-              {e.vests.length===0
-                ? <div style={{ color:T.textMuted, fontSize:"12px" }}>No vests recorded yet — enter in Income tab</div>
-                : e.vests.map(v=>(
-                  <div key={`${v.kind}-${v.mi}`} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${T.border}33`, fontSize:"12px" }}>
-                    <div>
-                      <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                        <span style={{ fontSize:"9px", fontWeight:700, padding:"1px 6px", borderRadius:"4px",
-                          background:v.kind==="RSU"?`${T.purple}22`:`${T.teal}22`,
-                          color:v.kind==="RSU"?T.purple:T.teal }}>{v.kind}</span>
-                        <span style={{ color:T.textDim }}>{MONTH_FULL[v.mi]} vest</span>
-                      </div>
-                      {v.vestDate && <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"2px" }}>{new Date(v.vestDate).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div>}
-                    </div>
-                    <div style={{ textAlign:"right" }}>
-                      {v.shares > 0 && <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.teal, fontWeight:600 }}>{v.shares} sh</div>}
-                      <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:600, fontSize:"11px" }}>{fmtINR(v.inr)}</div>
-                    </div>
-                  </div>
-                ))
-              }
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop:"12px", padding:"10px 14px", background:T.accentBg, borderRadius:"8px", fontSize:"11px", color:T.textDim }}>
-          RSU and ESPP values come from the Income tab monthly entries. Edit monthly income to update these.
-        </div>
+        <SumCard label={`US Stocks ${fy}`}  value={fmtINR(usStocksGrand)} sub="RSU + ESPP net value at vest" color={T.amber} />
+        <SumCard label={`EPF Contributions ${fy}`} value={fmtINR(epfFYContrib)} sub={`Corpus incl. opening: ${fmtINR(epfGrand)}`} color={T.blue} />
+        <SumCard label={`Total Invested ${fy}`} value={fmtINR(usStocksGrand + epfFYContrib)} sub="US stocks + EPF contributions" color={T.white} />
       </div>
 
       {/* ── Goals ── */}
@@ -376,6 +276,107 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
             })}
           </div>
         )}
+      </div>
+
+      {/* ── US Stocks (RSU + ESPP) ── */}
+      <div style={sec}>
+        <div style={secH}>
+          <span>US Stocks — RSU &amp; ESPP</span>
+          <span style={{ fontSize:"11px", color:T.textMuted }}>Net shares · value at vest date</span>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
+          {usStocksByPerson.map(e=>(
+            <div key={e.person} style={{ padding:"14px", background:T.bg, borderRadius:"10px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
+                <span style={{ fontSize:"13px", fontWeight:700, color:e.person==="Selva"?T.selva:T.akshaya }}>{e.person} · {PERSON_STOCK[e.person]}</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:700 }}>{fmtINR(e.total)}</span>
+              </div>
+              {e.vests.length===0
+                ? <div style={{ color:T.textMuted, fontSize:"12px" }}>No vests recorded yet — enter in Income tab</div>
+                : e.vests.map(v=>(
+                  <div key={`${v.kind}-${v.mi}`} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${T.border}33`, fontSize:"12px" }}>
+                    <div>
+                      <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                        <span style={{ fontSize:"9px", fontWeight:700, padding:"1px 6px", borderRadius:"4px",
+                          background:v.kind==="RSU"?`${T.purple}22`:`${T.teal}22`,
+                          color:v.kind==="RSU"?T.purple:T.teal }}>{v.kind}</span>
+                        <span style={{ color:T.textDim }}>{MONTH_FULL[v.mi]} vest</span>
+                      </div>
+                      {v.vestDate && <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"2px" }}>{new Date(v.vestDate).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</div>}
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      {v.shares > 0 && <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.teal, fontWeight:600 }}>{v.shares} sh</div>}
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.amber, fontWeight:600, fontSize:"11px" }}>{fmtINR(v.inr)}</div>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop:"12px", padding:"10px 14px", background:T.accentBg, borderRadius:"8px", fontSize:"11px", color:T.textDim }}>
+          RSU and ESPP values come from the Income tab monthly entries. Edit monthly income to update these.
+        </div>
+      </div>
+
+      {/* ── EPF Section ── */}
+      <div style={sec}>
+        <div style={secH}>
+          <span>Provident Fund (EPF)</span>
+          <span style={{ fontSize:"11px", color:T.textMuted }}>Employee + Employer · 8.25% p.a.</span>
+        </div>
+
+        <div style={{ display:"flex", flexDirection:"column", gap:"12px", marginBottom:"16px", padding:"14px", background:T.bg, borderRadius:"10px" }}>
+          <div style={{ fontSize:"11px", color:T.textDim, fontWeight:600, marginBottom:"4px" }}>OPENING BALANCE (Start of FY)</div>
+          {PERSONS.map(p=>(
+            <div key={p} style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+              <PersonBadge p={p}/>
+              <input type="number" value={epfOpening[p]||""} placeholder="e.g. 363580"
+                onChange={e=>updateInv({epfOpening:{...epfOpening,[p]:Number(e.target.value)}})}
+                style={{...inp, fontFamily:"'JetBrains Mono',monospace", flex:1}}
+                onFocus={e=>e.target.style.borderColor=T.accent} onBlur={e=>e.target.style.borderColor=T.border}
+              />
+            </div>
+          ))}
+        </div>
+
+        {epfByPerson.map(e=>(
+          <div key={e.person} style={{ marginBottom:"16px", padding:"14px", background:T.bg, borderRadius:"10px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                <span style={{ fontSize:"13px", fontWeight:700, color:e.person==="Selva"?T.selva:T.akshaya }}>{e.person}</span>
+                <span style={{ fontSize:"11px", color:T.textMuted }}>{EMPLOYER[e.person]}</span>
+              </div>
+              <div style={{ display:"flex", gap:"12px" }}>
+                <div style={{ textAlign:"right" }}><div style={{ fontSize:"10px", color:T.textMuted }}>FY Contributions</div><div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.blue, fontWeight:700 }}>{fmtINR(e.empYTD)}</div></div>
+                <div style={{ textAlign:"right" }}><div style={{ fontSize:"10px", color:T.textMuted }}>Corpus (incl. opening)</div><div style={{ fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:700 }}>{fmtINR(e.total)}</div></div>
+              </div>
+            </div>
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"11px", minWidth:"700px" }}>
+                <thead>
+                  <tr>
+                    <td style={{ padding:"4px 8px", color:T.textMuted, fontWeight:600 }}>Component</td>
+                    {MONTHS.map(m=><td key={m} style={{ padding:"4px 8px", textAlign:"right", color:T.textMuted, fontWeight:600 }}>{m}</td>)}
+                    <td style={{ padding:"4px 8px", textAlign:"right", color:T.accent, fontWeight:600 }}>Total</td>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={{ padding:"4px 8px", color:T.textDim }}>Total Contribution</td>
+                    {e.monthly.map((v,i)=><td key={i} style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:v>0?T.text:T.textMuted }}>{v>0?fmtINR(v):"—"}</td>)}
+                    <td style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.blue, fontWeight:700 }}>{fmtINR(e.empYTD)}</td>
+                  </tr>
+                  <tr style={{ borderTop:`1px solid ${T.border}` }}>
+                    <td style={{ padding:"4px 8px", color:T.accent, fontWeight:700 }}>Running Corpus</td>
+                    {e.running.map((v,i)=><td key={i} style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:600, fontSize:"10px" }}>{fmtINR(v)}</td>)}
+                    <td style={{ padding:"4px 8px", textAlign:"right", fontFamily:"'JetBrains Mono',monospace", color:T.accent, fontWeight:700 }}>{fmtINR(e.total)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
