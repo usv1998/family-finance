@@ -21,25 +21,34 @@ export async function fetchStockPrice(symbol) {
 
 // Fetch stock price + 1D change percent for a symbol.
 // Returns { price, changePct, prevClose } or null.
-// Uses regularMarketChangePercent (Yahoo's own 1D figure) as primary source,
-// falls back to computing from chartPreviousClose.
+//
+// changePct = (yesterday close - day-before-yesterday close) / day-before-yesterday close
+// This always shows the previous completed session's move, not today's intraday recovery.
+// e.g. if NVDA crashed yesterday but is recovering today, this correctly shows the crash.
 export async function fetchStockPriceWithChange(symbol) {
   try {
-    const url  = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=5d`);
-    const res  = await fetch(url, { cache: "no-store" });
+    const url    = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=5d`);
+    const res    = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
-    const json = await res.json();
-    const meta = json?.chart?.result?.[0]?.meta;
-    if (!meta) return null;
-    const price     = meta.regularMarketPrice ?? null;
-    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
-    // Prefer Yahoo's own field; fall back to manual calc
-    const changePct = meta.regularMarketChangePercent != null
-      ? meta.regularMarketChangePercent
-      : (price != null && prevClose != null && prevClose > 0
-          ? (price - prevClose) / prevClose * 100
-          : null);
-    return { price, changePct, prevClose };
+    const json   = await res.json();
+    const result = json?.chart?.result?.[0];
+    if (!result) return null;
+
+    const price  = result.meta?.regularMarketPrice ?? null;
+
+    // Historical closing prices for last 5 trading days (null = market still open today)
+    const allCloses = result.indicators?.quote?.[0]?.close ?? [];
+    const closes    = allCloses.filter(c => c != null); // completed sessions only
+
+    // Use the last two completed sessions: closes[-1] = yesterday, closes[-2] = day before
+    // Skipping today's live price so we always show the previous session's actual move.
+    const yesterday  = closes.length >= 1 ? closes[closes.length - 1] : null;
+    const dayBefore  = closes.length >= 2 ? closes[closes.length - 2] : null;
+    const changePct  = yesterday != null && dayBefore != null && dayBefore > 0
+      ? (yesterday - dayBefore) / dayBefore * 100
+      : null;
+
+    return { price, changePct, prevClose: dayBefore };
   } catch { return null; }
 }
 

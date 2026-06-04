@@ -951,16 +951,12 @@ export default function PortfolioTab({
     const { priceMap: map, changeMap: chg, prevCloseMap: pcm, fetched: count } =
       await fetchAllPricesWithChange(allHoldings, onProgress);
 
-    // Override MSFT/NVDA prices with liveData, and recompute their changePct
-    // against prevClose so the two numbers are always consistent.
+    // Override MSFT/NVDA prices with liveData for correct current valuation.
+    // Do NOT recompute changePct from liveData — 1D change is the previous session's
+    // move (yesterday vs day-before-yesterday) and is independent of today's live price.
     for (const sym of ["MSFT", "NVDA"]) {
       const livePrice = liveData?.[sym];
-      if (livePrice) {
-        map[sym] = livePrice;
-        // Recompute change: (livePrice - prevClose) / prevClose
-        const pc = pcm[sym];
-        if (pc && pc > 0) chg[sym] = (livePrice - pc) / pc * 100;
-      }
+      if (livePrice) map[sym] = livePrice;
     }
     setPriceMap(map);
     setChangeMap(chg);
@@ -984,7 +980,8 @@ export default function PortfolioTab({
     return () => document.removeEventListener("click", handler);
   }, [showDayBreakdown]);
 
-  // Sync liveData price updates (MSFT/NVDA) — also recompute changePct from stored prevClose
+  // Sync liveData price updates (MSFT/NVDA) for portfolio valuation only.
+  // changeMap is NOT updated here — 1D change is the previous session's historical move.
   useEffect(() => {
     setPriceMap(prev => {
       const next = { ...prev };
@@ -992,16 +989,7 @@ export default function PortfolioTab({
       if (liveData?.NVDA) next.NVDA = liveData.NVDA;
       return next;
     });
-    setChangeMap(prev => {
-      const next = { ...prev };
-      for (const sym of ["MSFT", "NVDA"]) {
-        const livePrice = liveData?.[sym];
-        const pc = prevCloseMap[sym];
-        if (livePrice && pc && pc > 0) next[sym] = (livePrice - pc) / pc * 100;
-      }
-      return next;
-    });
-  }, [liveData?.MSFT, liveData?.NVDA, prevCloseMap]);
+  }, [liveData?.MSFT, liveData?.NVDA]);
 
   const enriched = useMemo(() => allHoldings.map(h => ({
     ...h,
@@ -1160,10 +1148,10 @@ export default function PortfolioTab({
                   </div>
                   <div style={{ marginTop:"8px", padding:"8px", background:T.card, borderRadius:"8px",
                     fontSize:"10px", color:T.textMuted, lineHeight:1.6 }}>
-                    <b style={{ color:T.textDim }}>How calculated:</b><br/>
-                    US/IN stocks: Yahoo Finance <code>regularMarketChangePercent</code><br/>
-                    MFs: (today NAV − prev NAV) / prev NAV<br/>
-                    Your change = holding value × 1D%
+                    <b style={{ color:T.textDim }}>Shows previous session's move:</b><br/>
+                    Stocks: (yesterday close − day-before close) / day-before<br/>
+                    MFs: (yesterday NAV − day-before NAV) / day-before NAV<br/>
+                    A crash yesterday stays visible even if recovering today
                   </div>
                 </div>
               )}
