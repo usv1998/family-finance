@@ -523,6 +523,19 @@ export default function FamilyFinanceTracker() {
     }, 600);
   };
 
+  // Tag derived holdings (EPF, RSU, ESPP) to a goal via investmentsData.derivedGoalTags
+  const updateDerivedGoalTag = useCallback((derivedIds, goalId) => {
+    const next = { ...investmentsData };
+    const tags = { ...(next.derivedGoalTags || {}) };
+    for (const id of derivedIds) {
+      if (goalId == null) delete tags[id];
+      else tags[id] = goalId;
+    }
+    next.derivedGoalTags = tags;
+    setInvestmentsData(next);
+    persist(incomeData, rsuData, next, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
+  }, [investmentsData, incomeData, rsuData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData]);
+
   // Sync confirmed retirement plan targets → investmentsData.goals
   const confirmRetirementPlan = (planSummary) => {
     // planSummary: { retirement, childEducation, downpayment, scenario, confirmedAt }
@@ -793,6 +806,7 @@ export default function FamilyFinanceTracker() {
             onDeleteRsuEvent={deleteRsuEvent}
             onAddRsuGrant={addRsuGrant}
             onDeleteRsuGrant={deleteRsuGrant}
+            onUpdateDerivedGoalTag={updateDerivedGoalTag}
           />
         )}
       </div>

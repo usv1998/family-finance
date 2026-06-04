@@ -445,6 +445,7 @@ export default function DashboardTab({
   nwHistory, onSaveNwSnapshot,
   personFilter, onPersonFilterChange,
 }) {
+  const derivedGoalTags = investmentsData?.derivedGoalTags || {};
   const [priceMap,     setPriceMap]     = useState({});
   const [changeMap,    setChangeMap]    = useState({});
   const [fetching,     setFetching]     = useState(true);
@@ -585,19 +586,32 @@ export default function DashboardTab({
   // Goals from investmentsData
   const goals = investmentsData?.goals || [];
 
-  // Compute live goal values: sum of current market value of holdings tagged to each goal
+  // Compute live goal values: sum of current market value of holdings tagged to each goal.
+  // Covers both stored holdings (goalTag field) and derived holdings (derivedGoalTags map).
   const goalLiveValues = useMemo(() => {
-    if (!holdingsData?.length || !Object.keys(priceMap).length) return {};
+    if (!Object.keys(priceMap).length) return {};
     const map = {};
-    for (const h of holdingsData) {
+
+    // Stored holdings use goalTag directly on the record
+    for (const h of (holdingsData || [])) {
       if (!h.goalTag) continue;
       const val = getCurrentValueINR(h, priceMap, usdinr);
-      if (val != null) {
-        map[h.goalTag] = (map[h.goalTag] || 0) + val;
+      if (val != null) map[h.goalTag] = (map[h.goalTag] || 0) + val;
+    }
+
+    // Derived holdings (EPF, RSU, ESPP) use derivedGoalTags keyed by derived ID
+    if (Object.keys(derivedGoalTags).length > 0) {
+      const derived = getDerivedHoldings(rsuData, incomeData, investmentsData);
+      for (const h of derived) {
+        const goalId = derivedGoalTags[h.id];
+        if (!goalId) continue;
+        const val = getCurrentValueINR(h, priceMap, usdinr);
+        if (val != null) map[goalId] = (map[goalId] || 0) + val;
       }
     }
+
     return map;
-  }, [holdingsData, priceMap, usdinr]);
+  }, [holdingsData, derivedGoalTags, priceMap, usdinr, rsuData, incomeData, investmentsData]);
 
   // Upcoming RSU vests (next 5 for dashboard)
   const upcoming = useMemo(() =>

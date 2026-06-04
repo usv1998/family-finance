@@ -669,7 +669,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
   );
 }
 
-function HoldingsView({ grouped, priceMap, usdinr, sortBy = "value", changeMap = {}, onDelete, onUpdateBalance, onUpdateFundCategory, onUpdateHoldingGoal, goals = [], onDeleteDerived, onAdd }) {
+function HoldingsView({ grouped, priceMap, usdinr, sortBy = "value", changeMap = {}, onDelete, onUpdateBalance, onUpdateFundCategory, onUpdateHoldingGoal, onUpdateDerivedGoalTag, derivedGoalTags = {}, goals = [], onDeleteDerived, onAdd }) {
   const [expanded,  setExpanded]  = useState({});
   const [modalSym,  setModalSym]  = useState(null); // track by symbol key, not snapshot
   const toggle = key => setExpanded(e => ({ ...e, [key]: !e[key] }));
@@ -910,30 +910,49 @@ function HoldingsView({ grouped, priceMap, usdinr, sortBy = "value", changeMap =
                                   </div>
                                 )}
                                 {/* Goal earmarking — all holding types (stored + derived) */}
-                                {goals.filter(g => g.termType === "long").length > 0 && onUpdateHoldingGoal && (
+                                {goals.filter(g => g.termType === "long").length > 0 && (
                                   <div onClick={e => e.stopPropagation()}
                                     style={{ display:"flex", gap:"4px", alignItems:"center", flexWrap:"wrap" }}>
                                     <span style={{ fontSize:"9px", color:T.textMuted, fontWeight:700, letterSpacing:"0.3px" }}>GOAL</span>
                                     {goals.filter(g => g.termType === "long").map(g => {
-                                      // Use consensus tag: if all lots share a tag use it, otherwise none
-                                      const storedLots = lots.filter(l => !l.derived);
-                                      const currentTag = storedLots.length > 0
-                                        ? (storedLots.every(l => l.goalTag === storedLots[0]?.goalTag) ? storedLots[0]?.goalTag : null)
-                                        : null;
+                                      const storedLots  = lots.filter(l => !l.derived);
+                                      const derivedLots = lots.filter(l =>  l.derived);
+                                      const isAllDerived = storedLots.length === 0;
+
+                                      // Current tag: stored lots use goalTag field; derived lots use derivedGoalTags map
+                                      let currentTag = null;
+                                      if (isAllDerived) {
+                                        // All derived (EPF, RSU, ESPP) — read from derivedGoalTags
+                                        // Consensus: all derived lots in this group must agree
+                                        const tags = derivedLots.map(l => derivedGoalTags[l.id]);
+                                        currentTag = tags.length > 0 && tags.every(t => t === tags[0]) ? tags[0] : null;
+                                      } else {
+                                        // Stored lots — read goalTag from the holding record
+                                        currentTag = storedLots.every(l => l.goalTag === storedLots[0]?.goalTag)
+                                          ? storedLots[0]?.goalTag : null;
+                                      }
+
                                       const active = currentTag === g.id;
-                                      // Pass lot IDs directly — avoids sym/schemeCode mismatch for MFs
-                                      const lotIds = storedLots.map(l => l.id);
+
+                                      const handleClick = () => {
+                                        const newGoalId = active ? null : g.id;
+                                        if (isAllDerived) {
+                                          // Write to derivedGoalTags via separate callback
+                                          onUpdateDerivedGoalTag?.(derivedLots.map(l => l.id), newGoalId);
+                                        } else {
+                                          // Write goalTag to stored holdings
+                                          onUpdateHoldingGoal?.(storedLots.map(l => l.id), newGoalId);
+                                        }
+                                      };
+
                                       return (
-                                        <button key={g.id}
-                                          onClick={() => lotIds.length && onUpdateHoldingGoal(lotIds, active ? null : g.id)}
+                                        <button key={g.id} onClick={handleClick}
                                           title={active ? `Remove from ${g.name}` : `Tag to ${g.name}`}
                                           style={{ padding:"2px 7px", borderRadius:"5px",
                                             border:`1px solid ${active ? T.cta : T.border}`,
-                                            cursor: lotIds.length ? "pointer" : "default",
-                                            fontSize:"10px", fontWeight:700,
+                                            cursor:"pointer", fontSize:"10px", fontWeight:700,
                                             background: active ? T.ctaDim : "transparent",
-                                            color:      active ? T.cta    : T.textMuted,
-                                            opacity:    lotIds.length ? 1 : 0.4 }}>
+                                            color:      active ? T.cta    : T.textMuted }}>
                                           {active ? "✓ " : ""}{g.name}
                                         </button>
                                       );
@@ -974,6 +993,7 @@ export default function PortfolioTab({
   onAddHolding, onDeleteHolding, onUpdateHolding, onUpdateHoldingsBatch, onUpsertHoldings,
   onMergeStockLots, onMergeMFLots,
   onAddRsuGrant, onDeleteRsuGrant, onAddRsuEvent, onDeleteRsuEvent,
+  onUpdateDerivedGoalTag,
 }) {
   const [view,          setView]          = useState("overview");
   // Use prop if provided (persisted across tabs), else fall back to local state
@@ -1305,6 +1325,7 @@ export default function PortfolioTab({
         <HoldingsView grouped={grouped} priceMap={priceMap} usdinr={usdinr}
           sortBy={holdingSort} changeMap={changeMap}
           goals={investmentsData?.goals || []}
+          derivedGoalTags={investmentsData?.derivedGoalTags || {}}
           onDelete={onDeleteHolding}
           onAdd={onAddHolding}
           onUpdateBalance={(id, bal) => onUpdateHolding(id, { balance: bal })}
@@ -1315,13 +1336,13 @@ export default function PortfolioTab({
             if (updates.length > 0) onUpdateHoldingsBatch(updates);
           }}
           onUpdateHoldingGoal={(lotIds, goalId) => {
-            // lotIds: array of holding IDs to tag (all stored lots for this fund/stock)
             const idSet = new Set(lotIds);
             const updates = holdingsData
               .filter(h => idSet.has(h.id))
               .map(h => ({ id: h.id, changes: { goalTag: goalId ?? null } }));
             if (updates.length > 0) onUpdateHoldingsBatch(updates);
           }}
+          onUpdateDerivedGoalTag={onUpdateDerivedGoalTag}
           onDeleteDerived={h => {
             if (h.source === "rsu") onDeleteRsuEvent(h.id.replace("derived-rsu-", ""));
           }}/>
