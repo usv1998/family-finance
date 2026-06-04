@@ -119,6 +119,106 @@ export async function fetchMFNavWithChange(schemeCode) {
   } catch { return null; }
 }
 
+// ── Historical price fetching (for FY gain calculation) ──────────────────────
+
+/**
+ * Fetch closing price of a stock/index on or nearest to targetDate.
+ * Uses Yahoo Finance range=1y&interval=1d (covers last 12 months).
+ * Accepts at most ±5 trading days from targetDate.
+ * Returns price or null.
+ */
+export async function fetchStockPriceAtDate(symbol, targetDate) {
+  try {
+    const url = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=1y`);
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const result = json?.chart?.result?.[0];
+    if (!result) return null;
+
+    const timestamps = result.timestamp || [];
+    const closes     = result.indicators?.quote?.[0]?.close || [];
+    const targetTs   = new Date(targetDate + "T00:00:00Z").getTime() / 1000;
+
+    let bestIdx = -1, bestDiff = Infinity;
+    for (let i = 0; i < timestamps.length; i++) {
+      if (closes[i] == null) continue;
+      const diff = Math.abs(timestamps[i] - targetTs);
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    }
+    // Accept only if within 5 calendar days
+    return bestIdx >= 0 && bestDiff <= 5 * 86400 ? closes[bestIdx] : null;
+  } catch { return null; }
+}
+
+/**
+ * Fetch MF NAV on or nearest to targetDate from mfapi.in.
+ * mfapi returns data[] sorted newest-first with date "DD-MM-YYYY".
+ * Returns NAV or null.
+ */
+export async function fetchMFNavAtDate(schemeCode, targetDate) {
+  try {
+    const res = await fetch(`${MF_BASE}/${schemeCode}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const data = json?.data;
+    if (!data?.length) return null;
+
+    const targetTs = new Date(targetDate + "T00:00:00").getTime();
+    let bestEntry = null, bestDiff = Infinity;
+
+    for (const entry of data) {
+      // mfapi date format: "DD-MM-YYYY"
+      const [ed, em, ey] = entry.date.split("-");
+      const entryTs = new Date(`${ey}-${em}-${ed}T00:00:00`).getTime();
+      const diff = Math.abs(entryTs - targetTs);
+      if (diff < bestDiff) { bestDiff = diff; bestEntry = entry; }
+      // Stop once we've gone more than 7 days before the target
+      if (entryTs < targetTs - 7 * 86400000) break;
+    }
+    return bestEntry && bestDiff <= 7 * 86400000 ? parseFloat(bestEntry.nav) || null : null;
+  } catch { return null; }
+}
+
+/**
+ * Fetch prices for all stock+MF holdings at a specific historical date.
+ * Also fetches USD/INR on that date for accurate INR conversion.
+ * Returns { priceMap, usdinr } keyed by symbol / schemeCode.
+ */
+export async function fetchAllPricesAtDate(holdings, targetDate) {
+  const stockSymbols = [...new Set(
+    holdings
+      .filter(h => h.type === "us_stock" || h.type === "in_stock")
+      .map(h => {
+        if (h.type === "in_stock" && h.symbol && !/\.(NS|BO)$/i.test(h.symbol))
+          return h.symbol + ".NS";
+        return h.symbol;
+      }).filter(Boolean)
+  )];
+  const mfCodes = [...new Set(
+    holdings.filter(h => h.type === "mf").map(h => h.schemeCode).filter(Boolean)
+  )];
+
+  const [stockResults, mfResults, usdinrAtDate] = await Promise.all([
+    Promise.allSettled(stockSymbols.map(s =>
+      fetchStockPriceAtDate(s, targetDate).then(p => ({ k: s, v: p }))
+    )),
+    Promise.allSettled(mfCodes.map(c =>
+      fetchMFNavAtDate(c, targetDate).then(n => ({ k: c, v: n }))
+    )),
+    fetchStockPriceAtDate("USDINR=X", targetDate), // USD/INR on that date
+  ]);
+
+  const priceMap = {};
+  for (const r of [...stockResults, ...mfResults]) {
+    if (r.status === "fulfilled" && r.value?.v != null) {
+      priceMap[r.value.k] = r.value.v;
+    }
+  }
+
+  return { priceMap, usdinr: usdinrAtDate || null };
+}
+
 // Fetch latest NAV for an AMFI scheme code (price only, no change).
 export async function fetchMFNav(schemeCode) {
   try {

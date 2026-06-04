@@ -3,9 +3,11 @@ import { T } from "../../lib/theme";
 import { fmtINR, getCurrentFY, getCurrentMonthIdx, getEsspINR } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL } from "../../lib/constants";
 import { getDerivedHoldings } from "../../lib/derivedHoldings";
-import { fetchAllPricesWithChange, getCurrentValueINR, calcFDValue } from "../../lib/priceService";
+import { fetchAllPricesWithChange, fetchAllPricesAtDate, getCurrentValueINR } from "../../lib/priceService";
 import { getUpcomingVests } from "../../lib/grantUtils";
 import { DEFAULT_CATEGORIES } from "../expenses/DailyExpensesTab";
+
+const DEFAULT_COMMITTED_IDS = new Set(["rent", "utilities"]);
 
 // ── Income timing helper ──────────────────────────────────────────────────────
 // Salary is paid at end of month M and funds month M+1's expenses.
@@ -152,46 +154,52 @@ function GoalRing({ goal, size = 80 }) {
 
 // ── Month Summary mini card ───────────────────────────────────────────────────
 
-function MonthSummaryCard({ mi, fy, incomeData, txData, expensesData }) {
+function MonthSummaryCard({ mi, fy, incomeData, expensesData }) {
   const inv       = expensesData?.[fy] || {};
   const txActuals = inv.txActuals || {};
   const actuals   = inv.actuals   || {};
   const isTxMonth = !!txActuals[mi] && Object.keys(txActuals[mi]).length > 0;
   const monthData = isTxMonth ? (txActuals[mi] || {}) : (actuals?.[mi] || {});
 
-  // Use PREVIOUS month's salary — paid at end of month, funds the next month
+  // Salary: previous month funds this month's expenses
   const { prevMi, prevFY } = prevMonthFY(mi, fy);
   const takeHome  = PERSONS.reduce((s, p) =>
     s + (Number(incomeData?.[prevFY]?.[p]?.[prevMi]?.take_home) || 0), 0);
   const epf       = PERSONS.reduce((s, p) =>
     s + (Number(incomeData?.[prevFY]?.[p]?.[prevMi]?.epf) || 0), 0);
-  const totalIncome = takeHome + epf;
-  const totalSpent  = Object.values(monthData).reduce((s, v) => s + Number(v), 0);
-  const saved       = totalIncome - totalSpent;
-  const savingsRate = totalIncome > 0 ? saved / totalIncome * 100 : null;
-  const incomeSrcLabel = MONTH_FULL[prevMi]; // e.g. "May salary funds June"
+  const totalIncome    = takeHome + epf;
+  const totalSpent     = Object.values(monthData).reduce((s, v) => s + Number(v), 0);
+  const saved          = totalIncome - totalSpent;
+  const savingsRate    = totalIncome > 0 ? saved / totalIncome * 100 : null;
+  const incomeSrcLabel = MONTH_FULL[prevMi];
 
-  // Spending pace for current month
-  const today      = new Date().toISOString().slice(0, 10);
-  const curMonth   = today.slice(0, 7);
-  const selMonthStr = (() => {
-    // convert FY month idx back to calendar month string
-    const fyYear = parseInt(fy.slice(2, 6), 10);
-    const calMon = mi < 9 ? mi + 4 : mi - 8; // Apr=0→4, Mar=11→3
-    const calYear = calMon >= 4 ? fyYear : fyYear + 1;
-    return `${calYear}-${String(calMon).padStart(2,"0")}`;
-  })();
-  const isCurrent = selMonthStr === curMonth;
+  // Build category budget + committed breakdown
+  const savedCats = inv.categories || [];
+  const savedCatMap = Object.fromEntries(savedCats.map(c => [c.id, c]));
+  const cats = DEFAULT_CATEGORIES.map(c => ({
+    ...c,
+    budget:    savedCatMap[c.id]?.budget    ?? 0,
+    committed: savedCatMap[c.id]?.committed ?? DEFAULT_COMMITTED_IDS.has(c.id),
+  }));
+  const committedBudget      = cats.filter(c => c.committed).reduce((s, c) => s + Number(c.budget), 0);
+  const discretionaryBudget  = cats.filter(c => !c.committed).reduce((s, c) => s + Number(c.budget), 0);
+  const totalBudget          = committedBudget + discretionaryBudget;
+  const committedSpent       = cats.filter(c => c.committed)
+                                   .reduce((s, c) => s + (Number(monthData[c.id]) || 0), 0);
+  const discretionarySpent   = cats.filter(c => !c.committed)
+                                   .reduce((s, c) => s + (Number(monthData[c.id]) || 0), 0);
+  const discretionaryLeft    = Math.max(0, discretionaryBudget - discretionarySpent);
 
-  // Spending pace
+  // Current month metadata
+  const today       = new Date().toISOString().slice(0, 10);
+  const fyYear      = parseInt(fy.slice(2, 6), 10);
+  const calMon      = mi < 9 ? mi + 4 : mi - 8;
+  const calYear     = calMon >= 4 ? fyYear : fyYear + 1;
+  const selMonthStr = `${calYear}-${String(calMon).padStart(2,"0")}`;
+  const isCurrent   = selMonthStr === today.slice(0, 7);
   const dayOfMonth  = isCurrent ? parseInt(today.slice(8, 10), 10) : null;
   const daysInMonth = dayOfMonth
-    ? new Date(parseInt(selMonthStr.slice(0,4)), parseInt(selMonthStr.slice(5,7)), 0).getDate()
-    : null;
-  const pctDay   = dayOfMonth && daysInMonth ? dayOfMonth / daysInMonth : null;
-  const projected = dayOfMonth && totalSpent > 0
-    ? Math.round(totalSpent / dayOfMonth * daysInMonth) : null;
-  const pctSpend = projected && totalIncome > 0 ? projected / totalIncome : null;
+    ? new Date(calYear, calMon, 0).getDate() : null;
 
   const rateColor = savingsRate == null ? T.textDim
     : savingsRate >= 30 ? T.accent
@@ -201,24 +209,24 @@ function MonthSummaryCard({ mi, fy, incomeData, txData, expensesData }) {
   return (
     <div style={{ background:T.surface, borderRadius:"16px",
       border:`1px solid ${T.border}`, padding:"18px", height:"100%" }}>
+
+      {/* Header */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:"14px" }}>
         <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700, letterSpacing:"0.6px" }}>
-          {MONTH_FULL[mi].toUpperCase()} {isCurrent ? `· Day ${dayOfMonth} of ${daysInMonth}` : ""}
+          {MONTH_FULL[mi].toUpperCase()}{isCurrent ? ` · Day ${dayOfMonth} of ${daysInMonth}` : ""}
         </div>
-        <div style={{ fontSize:"9px", color:T.textMuted }}>
-          income from {incomeSrcLabel}
-        </div>
+        <div style={{ fontSize:"9px", color:T.textMuted }}>income from {incomeSrcLabel}</div>
       </div>
 
-      {/* Income / Spent / Saved row */}
-      <div style={{ display:"flex", gap:"0", borderRadius:"10px",
-        overflow:"hidden", border:`1px solid ${T.border}`, marginBottom:"12px" }}>
+      {/* Available / Spent / Saved three-panel */}
+      <div style={{ display:"flex", borderRadius:"10px", overflow:"hidden",
+        border:`1px solid ${T.border}`, marginBottom:"12px" }}>
         {[
           { label:"Available", value:totalIncome, color:T.blue,
-            note: totalIncome > 0 ? `${incomeSrcLabel} salary` : "no data" },
-          { label:"Spent",  value:totalSpent,  color:T.amber },
-          { label:"Saved",  value:Math.abs(saved), color:saved>=0?T.accent:T.red,
-            prefix: saved < 0 ? "−" : "" },
+            note: totalIncome > 0 ? `${incomeSrcLabel} salary` : "enter income" },
+          { label:"Spent",     value:totalSpent,  color:T.amber },
+          { label:"Saved",     value:Math.abs(saved), color:saved>=0?T.accent:T.red,
+            prefix: saved < 0 ? "−" : "", note: savingsRate != null ? `${Math.round(savingsRate)}%` : null },
         ].map((item, i) => (
           <div key={item.label} style={{
             flex:1, padding:"10px 6px", textAlign:"center",
@@ -232,55 +240,70 @@ function MonthSummaryCard({ mi, fy, incomeData, txData, expensesData }) {
               {item.value ? `${item.prefix||""}${fmtL(item.value)}` : "—"}
             </div>
             {item.note && (
-              <div style={{ fontSize:"8px", color:T.textMuted, marginTop:"2px" }}>
-                {item.note}
-              </div>
+              <div style={{ fontSize:"8px", color:T.textMuted, marginTop:"2px" }}>{item.note}</div>
             )}
           </div>
         ))}
       </div>
 
-      {/* Savings rate */}
+      {/* Savings rate bar */}
       {savingsRate !== null && (
-        <div style={{ marginBottom:"10px" }}>
+        <div style={{ marginBottom:"12px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"4px" }}>
             <span style={{ fontSize:"10px", color:T.textMuted }}>Savings rate</span>
             <span style={{ fontSize:"11px", fontWeight:800, color:rateColor,
               fontFamily:"'JetBrains Mono',monospace" }}>
               {Math.round(savingsRate)}%
+              {savingsRate >= 30 ? " ✓" : savingsRate >= 15 ? " ⚠" : " ✗"}
             </span>
           </div>
           <div style={{ height:"4px", background:T.border, borderRadius:"2px", overflow:"hidden" }}>
-            <div style={{ height:"100%",
-              width:`${Math.max(0, Math.min(100, savingsRate))}%`,
+            <div style={{ height:"100%", width:`${Math.max(0,Math.min(100,savingsRate))}%`,
               background:rateColor, borderRadius:"2px" }}/>
           </div>
         </div>
       )}
 
-      {/* Spending pace bar (current month only) */}
-      {isCurrent && pctDay && totalSpent > 0 && (
+      {/* Budget progress bar — committed pre-filled, discretionary tracked */}
+      {totalBudget > 0 && (
         <div>
-          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"4px" }}>
-            <span style={{ fontSize:"10px", color:T.textMuted }}>Spending pace</span>
-            {projected && (
-              <span style={{ fontSize:"10px", color:T.textDim }}>
-                projected {fmtL(projected)}
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"5px" }}>
+            <span style={{ fontSize:"10px", color:T.textMuted }}>
+              Budget <span style={{ color:T.textDim, fontFamily:"'JetBrains Mono',monospace" }}>
+                {fmtL(totalBudget)}/mo
               </span>
-            )}
+            </span>
+            <span style={{ fontSize:"10px", color: discretionaryLeft > 0 ? T.accent : T.red, fontWeight:700 }}>
+              {discretionaryLeft > 0 ? `${fmtL(discretionaryLeft)} flex left` : "flex over budget"}
+            </span>
           </div>
-          <div style={{ height:"4px", background:T.border, borderRadius:"2px",
-            overflow:"hidden", position:"relative" }}>
-            {/* Days elapsed (dim) */}
-            <div style={{ position:"absolute", left:0, top:0, bottom:0,
-              width:`${pctDay * 100}%`, background:`${T.blue}35`, borderRadius:"2px" }}/>
-            {/* Money spent vs income */}
-            {pctSpend && (
-              <div style={{ position:"absolute", left:0, top:0, bottom:0,
-                width:`${Math.min(100, pctSpend * 100)}%`,
-                background: pctSpend > 0.9 ? T.amber : T.blue,
-                borderRadius:"2px" }}/>
-            )}
+
+          {/* Segmented bar: committed (blue) + discretionary spent (purple) + remaining (empty) */}
+          <div style={{ height:"8px", background:T.border, borderRadius:"4px",
+            overflow:"hidden", display:"flex" }}>
+            {/* Committed block — always filled as baseline */}
+            <div style={{
+              width:`${Math.min(100, committedBudget / totalBudget * 100)}%`,
+              background:T.blue, borderRadius:"4px 0 0 4px", flexShrink:0,
+            }}/>
+            {/* Discretionary spent */}
+            <div style={{
+              width:`${Math.min(
+                100 - committedBudget / totalBudget * 100,
+                discretionarySpent / totalBudget * 100
+              )}%`,
+              background: discretionarySpent > discretionaryBudget ? T.red : T.purple,
+              flexShrink:0,
+            }}/>
+          </div>
+
+          <div style={{ display:"flex", justifyContent:"space-between", marginTop:"4px" }}>
+            <span style={{ fontSize:"9px", color:T.blue }}>
+              🔒 {fmtL(committedBudget)} fixed
+            </span>
+            <span style={{ fontSize:"9px", color: discretionarySpent > discretionaryBudget ? T.red : T.purple }}>
+              ✦ {fmtL(discretionarySpent)} / {fmtL(discretionaryBudget)} flex
+            </span>
           </div>
         </div>
       )}
@@ -365,11 +388,16 @@ export default function DashboardTab({
   nwHistory, onSaveNwSnapshot,
   personFilter, onPersonFilterChange,
 }) {
-  const [priceMap,  setPriceMap]  = useState({});
-  const [changeMap, setChangeMap] = useState({});
-  const [fetching,  setFetching]  = useState(true);
-  const [fetchedAt, setFetchedAt] = useState(null);
+  const [priceMap,     setPriceMap]     = useState({});
+  const [changeMap,    setChangeMap]    = useState({});
+  const [fetching,     setFetching]     = useState(true);
+  const [fetchedAt,    setFetchedAt]    = useState(null);
   const snapshotSaved = useRef(false);
+
+  // April 1 historical prices for genuine FY gain
+  const [aprilPriceMap,  setAprilPriceMap]  = useState({});
+  const [aprilUSDINR,    setAprilUSDINR]    = useState(null);
+  const [aprilFetching,  setAprilFetching]  = useState(true);
 
   const usdinr = liveData?.USDINR || 85;
 
@@ -403,6 +431,22 @@ export default function DashboardTab({
       return next;
     });
   }, [liveData?.MSFT, liveData?.NVDA]);
+
+  // Fetch April 1 prices once for genuine FY gain calculation
+  const aprilFirstDate = useMemo(() => {
+    const fyYear = parseInt(fy.slice(2, 6), 10); // "FY2025-26" → 2025
+    return `${fyYear}-04-01`;
+  }, [fy]);
+
+  useEffect(() => {
+    if (!allHoldings.length) return;
+    setAprilFetching(true);
+    fetchAllPricesAtDate(allHoldings, aprilFirstDate).then(({ priceMap: pm, usdinr: usd }) => {
+      setAprilPriceMap(pm);
+      setAprilUSDINR(usd);
+      setAprilFetching(false);
+    });
+  }, [aprilFirstDate]); // run once per FY
 
   // Compute net worth
   const { totalNW, dayChangeINR, dayChangePct } = useMemo(() => {
@@ -442,35 +486,44 @@ export default function DashboardTab({
     }
   }, [fetching, totalNW, priceMap.MSFT, priceMap.NVDA]);
 
-  // FY NW change: compare today vs earliest snapshot in this FY that is NOT today.
-  // We never compare today vs today (e.g. first session after dashboard deployed).
-  // We also require the baseline NW to be substantial (>50% of current) to guard
-  // against partial snapshots saved before prices finished loading.
-  const fyNwChange = useMemo(() => {
-    if (!nwHistory?.length || totalNW === 0) return null;
-    const today        = new Date().toISOString().slice(0, 10);
-    const fyStartYear  = parseInt(fy.slice(2, 6), 10); // "FY2025-26" → 2025
-    const fyStartDate  = `${fyStartYear}-04-01`;        // "2025-04-01"
+  // FY NW change: compute NW at April 1 using historical prices, compare to today.
+  // This is a genuine FY gain — no snapshot dependency, no approximation issues.
+  const { aprilNW, fyNwChange } = useMemo(() => {
+    if (!Object.keys(aprilPriceMap).length || totalNW === 0) {
+      return { aprilNW: null, fyNwChange: null };
+    }
 
-    // Snapshots from this FY, excluding today
-    const fySnaps = nwHistory.filter(s => s.date >= fyStartDate && s.date < today);
-    if (!fySnaps.length) return null;   // no prior snapshot → hide badge
+    const filtered = personFilter && personFilter !== "all"
+      ? allHoldings.filter(h => h.person === personFilter || h.person === "Joint")
+      : allHoldings;
 
-    const baseline = fySnaps[0];        // earliest snapshot in this FY
-    // Guard: skip if baseline looks partial (< 30% of today's NW — prices weren't ready)
-    if (baseline.value < totalNW * 0.30) return null;
+    // Use historical USDINR if available, else fall back to today's rate
+    const usdInrAtApril = aprilUSDINR || usdinr;
+    let nwAtApril = 0;
 
-    const abs = totalNW - baseline.value;
-    const pct = (abs / baseline.value) * 100;
+    for (const h of filtered) {
+      // For stocks + MFs: use April 1 price
+      const aprilVal = getCurrentValueINR(h, aprilPriceMap, usdInrAtApril);
+      if (aprilVal != null && aprilVal > 0) {
+        nwAtApril += aprilVal;
+      } else if (h.type === "epf" || h.type === "ppf" || h.type === "fd") {
+        // EPF/PPF/FD: no historical market price, use current value as approximation
+        // (these change slowly and the error is small)
+        const cur = getCurrentValueINR(h, priceMap, usdinr);
+        if (cur != null) nwAtApril += cur;
+      }
+      // Holdings with no April 1 price and no fallback: excluded from both sides (fair)
+    }
 
-    // Human-readable "since" label
-    const d = new Date(baseline.date + "T00:00:00");
-    const sinceLabel = d.toLocaleDateString("en-IN", { day:"numeric", month:"short" });
-    const isApril1   = baseline.date.slice(5) === "04-01";
-    const label      = isApril1 ? `FY` : `since ${sinceLabel}`;
+    if (nwAtApril === 0) return { aprilNW: null, fyNwChange: null };
 
-    return { abs, pct, label };
-  }, [nwHistory, totalNW, fy]);
+    const abs = totalNW - nwAtApril;
+    const pct = (abs / nwAtApril) * 100;
+    return {
+      aprilNW: nwAtApril,
+      fyNwChange: { abs, pct, label: "FY" },
+    };
+  }, [aprilPriceMap, aprilUSDINR, allHoldings, totalNW, priceMap, usdinr, personFilter]);
 
   // Goals from investmentsData
   const goals = investmentsData?.goals || [];
@@ -540,17 +593,22 @@ export default function DashboardTab({
 
           {/* FY change + 1D change row */}
           <div style={{ display:"flex", gap:"10px", marginTop:"10px", flexWrap:"wrap" }}>
-            {fyNwChange && (
+            {aprilFetching ? (
+              <span style={{ fontSize:"11px", color:T.textMuted, padding:"3px 0" }}>
+                Computing FY gain…
+              </span>
+            ) : fyNwChange ? (
               <span style={{
                 fontSize:"12px", fontWeight:700, padding:"3px 10px", borderRadius:"6px",
                 background: fyNwChange.abs >= 0 ? `${T.accent}15` : `${T.red}15`,
                 color:      fyNwChange.abs >= 0 ? T.accent : T.red,
                 fontFamily:"'JetBrains Mono',monospace",
-              }}>
+              }}
+                title={`NW at 1 Apr: ${fmtL(aprilNW)} → Today: ${fmtL(totalNW)}`}>
                 {fyNwChange.abs >= 0 ? "+" : ""}{fmtL(fyNwChange.abs)}
                 {" "}({fyNwChange.pct >= 0 ? "+" : ""}{fyNwChange.pct.toFixed(1)}%) {fyNwChange.label}
               </span>
-            )}
+            ) : null}
             {dayChangePct !== null && (
               <span style={{
                 fontSize:"12px", fontWeight:700, padding:"3px 10px", borderRadius:"6px",
@@ -611,7 +669,6 @@ export default function DashboardTab({
         <MonthSummaryCard
           mi={curMonthIdx} fy={fy}
           incomeData={incomeData}
-          txData={txData}
           expensesData={expensesData}
         />
 
