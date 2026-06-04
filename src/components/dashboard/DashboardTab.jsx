@@ -431,23 +431,45 @@ export default function DashboardTab({
     };
   }, [allHoldings, priceMap, changeMap, usdinr, personFilter]);
 
-  // Save today's NW snapshot once per session after prices load
+  // Save today's NW snapshot once per session, but only after prices are fully
+  // loaded AND the NW includes live US stock prices (MSFT or NVDA in priceMap).
+  // This prevents saving a partial NW (EPF+FD only) before the price fetch completes.
   useEffect(() => {
-    if (!fetching && totalNW > 0 && !snapshotSaved.current) {
+    const hasLivePrices = priceMap.MSFT || priceMap.NVDA;
+    if (!fetching && totalNW > 0 && hasLivePrices && !snapshotSaved.current) {
       snapshotSaved.current = true;
       onSaveNwSnapshot?.(totalNW);
     }
-  }, [fetching, totalNW]);
+  }, [fetching, totalNW, priceMap.MSFT, priceMap.NVDA]);
 
-  // FY NW change: compare today vs first snapshot in this FY
+  // FY NW change: compare today vs earliest snapshot in this FY that is NOT today.
+  // We never compare today vs today (e.g. first session after dashboard deployed).
+  // We also require the baseline NW to be substantial (>50% of current) to guard
+  // against partial snapshots saved before prices finished loading.
   const fyNwChange = useMemo(() => {
     if (!nwHistory?.length || totalNW === 0) return null;
-    const fyStart = fy.slice(2, 6); // "2025" from "FY2025-26"
-    const fyStartDate = `${fyStart}-04-01`; // Apr 1
-    const fySnaps = nwHistory.filter(s => s.date >= fyStartDate);
-    if (!fySnaps.length) return null;
-    const first = fySnaps[0].value;
-    return { abs: totalNW - first, pct: (totalNW - first) / first * 100 };
+    const today        = new Date().toISOString().slice(0, 10);
+    const fyStartYear  = parseInt(fy.slice(2, 6), 10); // "FY2025-26" → 2025
+    const fyStartDate  = `${fyStartYear}-04-01`;        // "2025-04-01"
+
+    // Snapshots from this FY, excluding today
+    const fySnaps = nwHistory.filter(s => s.date >= fyStartDate && s.date < today);
+    if (!fySnaps.length) return null;   // no prior snapshot → hide badge
+
+    const baseline = fySnaps[0];        // earliest snapshot in this FY
+    // Guard: skip if baseline looks partial (< 30% of today's NW — prices weren't ready)
+    if (baseline.value < totalNW * 0.30) return null;
+
+    const abs = totalNW - baseline.value;
+    const pct = (abs / baseline.value) * 100;
+
+    // Human-readable "since" label
+    const d = new Date(baseline.date + "T00:00:00");
+    const sinceLabel = d.toLocaleDateString("en-IN", { day:"numeric", month:"short" });
+    const isApril1   = baseline.date.slice(5) === "04-01";
+    const label      = isApril1 ? `FY` : `since ${sinceLabel}`;
+
+    return { abs, pct, label };
   }, [nwHistory, totalNW, fy]);
 
   // Goals from investmentsData
@@ -526,7 +548,7 @@ export default function DashboardTab({
                 fontFamily:"'JetBrains Mono',monospace",
               }}>
                 {fyNwChange.abs >= 0 ? "+" : ""}{fmtL(fyNwChange.abs)}
-                {" "}({fyNwChange.pct >= 0 ? "+" : ""}{fyNwChange.pct.toFixed(1)}%) FY
+                {" "}({fyNwChange.pct >= 0 ? "+" : ""}{fyNwChange.pct.toFixed(1)}%) {fyNwChange.label}
               </span>
             )}
             {dayChangePct !== null && (
