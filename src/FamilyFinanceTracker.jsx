@@ -480,9 +480,19 @@ export default function FamilyFinanceTracker() {
     reader.readAsText(file);
   };
 
+  // Retirement plan assumptions are changed by sliders that fire 10s of events
+  // per drag. Update React state immediately for a responsive UI, but debounce
+  // the Supabase persist so only the final resting value is written.
+  const retirementPersistTimer = useRef(null);
+  const latestRetirementRef    = useRef({});
+
   const updateRetirement = (data) => {
+    latestRetirementRef.current = data;
     setRetirementData(data);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, data);
+    if (retirementPersistTimer.current) clearTimeout(retirementPersistTimer.current);
+    retirementPersistTimer.current = setTimeout(() => {
+      persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, latestRetirementRef.current);
+    }, 600);
   };
 
   if(!authReady || (supabase && !user)) return supabase && !user && authReady ? <LoginScreen/> : <div style={{ display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:T.bg,color:T.accent,fontFamily:"'JetBrains Mono',monospace" }}>Loading…</div>;
