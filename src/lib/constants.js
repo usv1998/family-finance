@@ -8,6 +8,7 @@ export const LIVE_DEFAULTS = { MSFT:428.50, NVDA:136.20, USDINR:85.42 };
 export const STORAGE_KEY = "family-finance-v6";
 
 export const TABS = [
+  { id:"dashboard",    label:"Dashboard",       active:true },
   { id:"daily",        label:"Transactions",    active:true },
   { id:"income",       label:"Income",          active:true },
   { id:"investments",  label:"Investments",     active:true },

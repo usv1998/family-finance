@@ -12,6 +12,7 @@ import { fetchLiveData } from "./lib/marketData";
 import LiveStrip from "./components/LiveStrip";
 import LoginScreen from "./components/LoginScreen";
 import LockScreen from "./components/LockScreen";
+import DashboardTab from "./components/dashboard/DashboardTab";
 import IncomeTab from "./components/income/IncomeTab";
 import InvestmentsTab from "./components/investments/InvestmentsTab";
 import ExpensesTab from "./components/expenses/ExpensesTab";
@@ -20,7 +21,7 @@ import PortfolioTab from "./components/portfolio/PortfolioTab";
 import RetirementTab from "./components/retirement/RetirementTab";
 
 export default function FamilyFinanceTracker() {
-  const [activeTab,      setActiveTab]      = useState("daily");
+  const [activeTab,      setActiveTab]      = useState("dashboard");
   const [fy,             setFY]             = useState(getCurrentFY());
   const [incomeData,     setIncomeData]     = useState({});
   const [rsuData,        setRsuData]        = useState({});
@@ -31,6 +32,7 @@ export default function FamilyFinanceTracker() {
   const [holdingsData,   setHoldingsData]   = useState([]);
   const [txData,         setTxData]         = useState([]);
   const [retirementData, setRetirementData] = useState({});
+  const [nwHistory,      setNwHistory]      = useState([]); // [{ date:"YYYY-MM-DD", value }]
   const [liveData,       setLiveData]       = useState(LIVE_DEFAULTS);
   const [refreshing,     setRefreshing]     = useState(false);
   const [loading,        setLoading]        = useState(true);
@@ -123,6 +125,7 @@ export default function FamilyFinanceTracker() {
         else                      setRsuGrants(SEED_DATA.rsuGrants);
         if(saved.holdingsData)    setHoldingsData(saved.holdingsData);
         if(saved.retirementData)  setRetirementData(saved.retirementData);
+        if(saved.nwHistory) { setNwHistory(saved.nwHistory); nwHistoryRef.current = saved.nwHistory; }
         // Seed imported transactions once if txData is empty
         if(saved.txData?.length > 0) {
           // Always rebuild txActuals from txData on load to heal any stale persisted state
@@ -158,11 +161,13 @@ export default function FamilyFinanceTracker() {
     })();
   },[authReady]);
 
-  const persist = useCallback((iD,rD,invD,expD,portD,rG,hD,tD,retD)=>{
+  const nwHistoryRef = useRef([]);
+  const persist = useCallback((iD,rD,invD,expD,portD,rG,hD,tD,retD,nwH)=>{
     if(saveRef.current) clearTimeout(saveRef.current);
     setSyncing(true);
     saveRef.current = setTimeout(async()=>{
-      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD, txData:tD, retirementData:retD}, userRef.current?.id);
+      const nwHistory = nwH ?? nwHistoryRef.current;
+      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD, txData:tD, retirementData:retD, nwHistory}, userRef.current?.id);
       setSyncing(false);
     }, 500);
   },[]);
@@ -488,6 +493,21 @@ export default function FamilyFinanceTracker() {
     reader.readAsText(file);
   };
 
+  // Save a net-worth snapshot for today (called by Dashboard after price fetch).
+  // Stores at most one entry per date; caps history at 24 months.
+  const saveNwSnapshot = useCallback((value) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const prev  = nwHistoryRef.current;
+    // Skip if today already recorded or value is zero
+    if (!value || prev.some(e => e.date === today)) return;
+    const next  = [...prev, { date: today, value: Math.round(value) }]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-24); // keep last 24 snapshots
+    nwHistoryRef.current = next;
+    setNwHistory(next);
+    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData, next);
+  }, [incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData]);
+
   // Retirement plan assumptions are changed by sliders that fire 10s of events
   // per drag. Update React state immediately for a responsive UI, but debounce
   // the Supabase persist so only the final resting value is written.
@@ -502,6 +522,13 @@ export default function FamilyFinanceTracker() {
       persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, latestRetirementRef.current);
     }, 600);
   };
+
+  // ── Dashboard quick-nav tile event ─────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e) => setActiveTab(e.detail);
+    window.addEventListener("dk-switch-tab", handler);
+    return () => window.removeEventListener("dk-switch-tab", handler);
+  }, []);
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -632,6 +659,23 @@ export default function FamilyFinanceTracker() {
 
       {/* Content */}
       <div style={{ maxWidth:"1400px", margin:"0 auto", padding:"20px" }}>
+        {activeTab==="dashboard"&&(
+          <DashboardTab
+            holdingsData={holdingsData}
+            rsuData={rsuData}
+            incomeData={incomeData}
+            investmentsData={investmentsData}
+            expensesData={expensesData}
+            txData={txData}
+            rsuGrants={rsuGrants}
+            liveData={liveData}
+            fy={fy}
+            nwHistory={nwHistory}
+            onSaveNwSnapshot={saveNwSnapshot}
+            personFilter={personFilter}
+            onPersonFilterChange={updatePersonFilter}
+          />
+        )}
         {activeTab==="income"&&(
           <IncomeTab
             incomeData={incomeData}
