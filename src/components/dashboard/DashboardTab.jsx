@@ -90,6 +90,31 @@ function NwSparkline({ history }) {
 
 // ── Goal Progress Ring ─────────────────────────────────────────────────────────
 
+// Compute the "on-track" target value for a goal at FY end (March 31).
+// Assumes compound growth from current value toward final target.
+// Returns null if not computable.
+function computeFyEndTarget(liveValue, targetAmount, targetDate) {
+  if (!targetDate || !targetAmount || targetAmount <= 0) return null;
+  const today    = new Date();
+  const due      = new Date(targetDate);
+  const yearsTotal = (due - today) / (365.25 * 86400000);
+  if (yearsTotal <= 0) return null;
+
+  const cur = liveValue > 0 ? liveValue : null;
+  if (!cur || cur >= targetAmount) return null;
+
+  // Next FY end = March 31 of next year if we're past it, else this year
+  const yr = today.getMonth() >= 3 ? today.getFullYear() + 1 : today.getFullYear();
+  const fyEnd = new Date(`${yr}-03-31`);
+  const yearsToFyEnd = (fyEnd - today) / (365.25 * 86400000);
+  if (yearsToFyEnd <= 0 || yearsToFyEnd > 1.1) return null;
+
+  // Implied annual growth rate: r = (target/cur)^(1/yearsTotal) - 1
+  const r = Math.pow(targetAmount / cur, 1 / yearsTotal) - 1;
+  if (r <= 0 || r > 5) return null; // sanity check
+  return cur * Math.pow(1 + r, yearsToFyEnd);
+}
+
 function GoalRing({ goal, size = 80, liveValue = null }) {
   const target  = Number(goal.targetAmount) || 0;
   // liveValue: sum of tagged holdings' current market value (computed from priceMap).
@@ -102,6 +127,11 @@ function GoalRing({ goal, size = 80, liveValue = null }) {
   const dueDate  = goal.targetDate ? new Date(goal.targetDate) : null;
   const daysLeft = dueDate ? Math.ceil((dueDate - today) / 86400000) : null;
   const overdue  = daysLeft !== null && daysLeft < 0;
+
+  // FY-end target: what you should have by March 31 to stay on track
+  const fyEndTarget = computeFyEndTarget(saved, target, goal.targetDate);
+  const fyOnTrack   = fyEndTarget != null && saved >= fyEndTarget * 0.95; // 5% buffer
+  const fyShortfall = fyEndTarget != null ? fyEndTarget - saved : null;
 
   const r    = (size / 2) - 7;
   const circ = 2 * Math.PI * r;
@@ -142,13 +172,31 @@ function GoalRing({ goal, size = 80, liveValue = null }) {
         overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
         {goal.name}
       </div>
+      {/* Current / Target with target year */}
       <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"1px" }}>
         <span style={{ color: isLive ? T.accent : T.textMuted }}>{fmtL(saved)}</span>
         {" / "}{fmtL(target)}
+        {dueDate && (
+          <span style={{ color:T.textMuted, fontSize:"9px" }}> · {dueDate.getFullYear()}</span>
+        )}
       </div>
       {isLive && (
         <div style={{ fontSize:"8px", color:T.accent, marginTop:"1px", fontWeight:600 }}>
           ● live
+        </div>
+      )}
+      {/* FY-end on-track indicator */}
+      {fyEndTarget != null && (
+        <div style={{
+          marginTop:"5px", padding:"3px 6px", borderRadius:"5px", fontSize:"9px", fontWeight:700,
+          background: fyOnTrack ? `${T.accent}15` : `${T.amber}15`,
+          color: fyOnTrack ? T.accent : T.amber,
+          maxWidth: size + 20, textAlign:"center", lineHeight:1.3,
+        }}
+          title={`FY-end target (Mar 31): ${fmtL(fyEndTarget)} — based on implied growth rate to reach ${fmtL(target)}`}>
+          {fyOnTrack
+            ? `✓ FY on track`
+            : `Need ${fmtL(fyShortfall)} by Mar`}
         </div>
       )}
       {daysLeft !== null && (

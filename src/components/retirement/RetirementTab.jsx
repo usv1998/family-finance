@@ -60,11 +60,32 @@ const SUB_TABS = [
   { id: "glossary", label: "Glossary" },
 ];
 
-export default function RetirementTab({ retirementData, onUpdate, holdingsData, liveData, rsuData, incomeData, investmentsData }) {
+// Deep-merge stored plan with defaults so missing sections never produce NaN.
+// Uses one-level spread per section — enough for our flat schema.
+function mergePlanWithDefaults(saved) {
+  if (!saved) return DEFAULT_ASSUMPTIONS;
+  const D = DEFAULT_ASSUMPTIONS;
+  return {
+    ...D, ...saved,
+    profile:           { ...D.profile,           ...(saved.profile           || {}) },
+    home:              { ...D.home,              ...(saved.home              || {}) },
+    starting_position: { ...D.starting_position, ...(saved.starting_position || {}) },
+    income:            { ...D.income,            ...(saved.income            || {}) },
+    expenses:          { ...D.expenses,          ...(saved.expenses          || {}) },
+    child:             { ...D.child,             ...(saved.child             || {}) },
+    retirement: {
+      ...D.retirement, ...(saved.retirement || {}),
+      targets: { ...D.retirement.targets, ...(saved.retirement?.targets || {}) },
+    },
+    general: { ...D.general, ...(saved.general || {}) },
+  };
+}
+
+export default function RetirementTab({ retirementData, onUpdate, onConfirmPlan, holdingsData, liveData, rsuData, incomeData, investmentsData }) {
   const [subTab, setSubTab] = useState("corpus");
 
-  // Financial plan state
-  const plan = retirementData?.plan || DEFAULT_ASSUMPTIONS;
+  // Financial plan state — always merged with defaults so no section is undefined
+  const plan = mergePlanWithDefaults(retirementData?.plan);
   const updatePlan = (next) => onUpdate({ ...retirementData, plan: next });
 
   return (
@@ -119,7 +140,12 @@ export default function RetirementTab({ retirementData, onUpdate, holdingsData, 
 
       {subTab === "corpus"   && <CorpusTracker retirementData={retirementData} onUpdate={onUpdate} holdingsData={holdingsData} liveData={liveData} rsuData={rsuData} incomeData={incomeData} investmentsData={investmentsData} />}
       {subTab === "homeloan" && <HomeLoanCalc plan={plan} onUpdatePlan={updatePlan} />}
-      {subTab === "lifetime" && <LifetimePlan plan={plan} onUpdatePlan={updatePlan} />}
+      {subTab === "lifetime" && (
+        <LifetimePlan plan={plan} onUpdatePlan={updatePlan}
+          onConfirmPlan={onConfirmPlan}
+          confirmedAt={retirementData?.confirmedAt}
+        />
+      )}
       {subTab === "glossary" && <GlossaryTab />}
     </div>
   );

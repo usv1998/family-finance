@@ -523,6 +523,48 @@ export default function FamilyFinanceTracker() {
     }, 600);
   };
 
+  // Sync confirmed retirement plan targets → investmentsData.goals
+  const confirmRetirementPlan = (planSummary) => {
+    // planSummary: { retirement, childEducation, downpayment, scenario, confirmedAt }
+    const GOAL_MAP = [
+      { key:"retirement",     names:["Retirement","retirement"],         termType:"long" },
+      { key:"childEducation", names:["Child Education","child education","Education"], termType:"long" },
+      { key:"downpayment",    names:["House Downpayment","Downpayment","Down Payment"], termType:"long" },
+    ];
+
+    const existingGoals = investmentsData?.goals || [];
+    let updatedGoals = [...existingGoals];
+
+    for (const { key, names, termType } of GOAL_MAP) {
+      const data = planSummary[key];
+      if (!data) continue;
+      // Find matching goal (case-insensitive name match)
+      const idx = updatedGoals.findIndex(g =>
+        names.some(n => g.name.toLowerCase().includes(n.toLowerCase()))
+      );
+      const patch = {
+        targetAmount: data.targetAmount,
+        targetDate: data.targetDate,
+        termType,
+        ...(data.monthlySIP != null ? { monthlySIP: data.monthlySIP } : {}),
+      };
+      if (idx >= 0) {
+        updatedGoals[idx] = { ...updatedGoals[idx], ...patch };
+      } else {
+        // Create the goal if it doesn't exist
+        const nameMap = { retirement:"Retirement", childEducation:"Child Education", downpayment:"House Downpayment" };
+        updatedGoals.push({ id: genId(), name: nameMap[key], savedAmount: 0, notes: "", ...patch });
+      }
+    }
+
+    // Save updated goals + confirmedAt in retirementData
+    const nextInv = { ...investmentsData, goals: updatedGoals };
+    const nextRet = { ...retirementData, plan: retirementData?.plan, confirmedAt: planSummary.confirmedAt };
+    setInvestmentsData(nextInv);
+    setRetirementData(nextRet);
+    persist(incomeData, rsuData, nextInv, expensesData, portfolioData, rsuGrants, holdingsData, txData, nextRet);
+  };
+
   // ── Dashboard quick-nav tile event ─────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => setActiveTab(e.detail);
@@ -721,6 +763,7 @@ export default function FamilyFinanceTracker() {
           <RetirementTab
             retirementData={retirementData}
             onUpdate={updateRetirement}
+            onConfirmPlan={confirmRetirementPlan}
             holdingsData={holdingsData}
             liveData={liveData}
             rsuData={rsuData}

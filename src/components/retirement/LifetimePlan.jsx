@@ -244,7 +244,7 @@ function ApproachesComparison({ plan }) {
   );
 }
 
-export default function LifetimePlan({ plan, onUpdatePlan }) {
+export default function LifetimePlan({ plan, onUpdatePlan, onConfirmPlan, confirmedAt }) {
   const [scenario, setScenario] = useState("1L");
   const [subTab, setSubTab]     = useState("lifetime");
 
@@ -318,6 +318,60 @@ export default function LifetimePlan({ plan, onUpdatePlan }) {
           <div style={{ marginBottom: "16px" }}>
             <VerdictBanner verdict={result.verdict} peak_rsu_pct={result.peak_rsu_pct} peak_rsu_needed={result.peak_rsu_needed} />
           </div>
+
+          {/* ── Confirm Plan → sync to Dashboard goals ── */}
+          {onConfirmPlan && (
+            <div style={{ background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.25)",
+              borderRadius:"12px", padding:"16px 20px", marginBottom:"16px",
+              display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"12px" }}>
+              <div>
+                <div style={{ fontSize:"13px", fontWeight:700, color:"#818CF8", marginBottom:"4px" }}>
+                  Lock in this plan
+                </div>
+                <div style={{ fontSize:"11px", color:T.textMuted, lineHeight:1.5 }}>
+                  Syncs <strong style={{ color:T.textDim }}>Retirement</strong> ({fmtCr(result.target_corpus)}),{" "}
+                  <strong style={{ color:T.textDim }}>Child Education</strong> ({fmtCr(result.child_sip_fv_target)}),{" "}
+                  <strong style={{ color:T.textDim }}>House Downpayment</strong> ({fmtCr(plan.home?.property_value * (plan.home?.down_payment_pct + (plan.home?.stamp_duty_pct || 0)) + (plan.home?.interiors || 0))}){" "}
+                  targets to Dashboard goals.
+                </div>
+                {confirmedAt && (
+                  <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"4px" }}>
+                    Last confirmed {new Date(confirmedAt).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" })}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  const retirementYear = new Date().getFullYear() + (plan.profile.retirement_age - plan.profile.current_age);
+                  const childCollegeYear = new Date().getFullYear() + plan.child.years_until_college;
+                  onConfirmPlan({
+                    retirement: {
+                      targetAmount: Math.round(result.target_corpus),
+                      targetDate: `${retirementYear}-04-01`,
+                      monthlySIP: Math.round(result.retirement_sip_year_1),
+                    },
+                    childEducation: {
+                      targetAmount: Math.round(result.child_sip_fv_target),
+                      targetDate: `${childCollegeYear}-06-01`,
+                      monthlySIP: Math.round(result.child_sip_year_1),
+                    },
+                    downpayment: {
+                      targetAmount: Math.round(
+                        plan.home.property_value * (plan.home.down_payment_pct + (plan.home.stamp_duty_pct || 0))
+                        + (plan.home.interiors || 0)
+                      ),
+                      targetDate: `${new Date().getFullYear() + 3}-04-01`,
+                    },
+                    scenario: scenario,
+                    confirmedAt: new Date().toISOString(),
+                  });
+                }}
+                style={{ padding:"10px 22px", background:"#6366F1", border:"none", borderRadius:"8px",
+                  color:"#fff", fontSize:"13px", fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+                ✓ Confirm Plan
+              </button>
+            </div>
+          )}
 
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "20px" }}>
             <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "8px", color: T.text }}>
