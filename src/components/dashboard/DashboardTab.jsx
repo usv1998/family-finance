@@ -7,6 +7,17 @@ import { fetchAllPricesWithChange, getCurrentValueINR, calcFDValue } from "../..
 import { getUpcomingVests } from "../../lib/grantUtils";
 import { DEFAULT_CATEGORIES } from "../expenses/DailyExpensesTab";
 
+// ── Income timing helper ──────────────────────────────────────────────────────
+// Salary is paid at end of month M and funds month M+1's expenses.
+// Returns the FY + month-index of the previous month.
+function prevMonthFY(mi, fy) {
+  if (mi === 0) {
+    const fyYear = parseInt(fy.slice(2, 6), 10);
+    return { prevMi: 11, prevFY: `FY${fyYear - 1}-${String(fyYear).slice(2)}` };
+  }
+  return { prevMi: mi - 1, prevFY: fy };
+}
+
 // ── formatters ────────────────────────────────────────────────────────────────
 
 function fmtL(n) {
@@ -148,14 +159,17 @@ function MonthSummaryCard({ mi, fy, incomeData, txData, expensesData }) {
   const isTxMonth = !!txActuals[mi] && Object.keys(txActuals[mi]).length > 0;
   const monthData = isTxMonth ? (txActuals[mi] || {}) : (actuals?.[mi] || {});
 
+  // Use PREVIOUS month's salary — paid at end of month, funds the next month
+  const { prevMi, prevFY } = prevMonthFY(mi, fy);
   const takeHome  = PERSONS.reduce((s, p) =>
-    s + (Number(incomeData?.[fy]?.[p]?.[mi]?.take_home) || 0), 0);
+    s + (Number(incomeData?.[prevFY]?.[p]?.[prevMi]?.take_home) || 0), 0);
   const epf       = PERSONS.reduce((s, p) =>
-    s + (Number(incomeData?.[fy]?.[p]?.[mi]?.epf) || 0), 0);
+    s + (Number(incomeData?.[prevFY]?.[p]?.[prevMi]?.epf) || 0), 0);
   const totalIncome = takeHome + epf;
   const totalSpent  = Object.values(monthData).reduce((s, v) => s + Number(v), 0);
   const saved       = totalIncome - totalSpent;
   const savingsRate = totalIncome > 0 ? saved / totalIncome * 100 : null;
+  const incomeSrcLabel = MONTH_FULL[prevMi]; // e.g. "May salary funds June"
 
   // Spending pace for current month
   const today      = new Date().toISOString().slice(0, 10);
@@ -187,16 +201,21 @@ function MonthSummaryCard({ mi, fy, incomeData, txData, expensesData }) {
   return (
     <div style={{ background:T.surface, borderRadius:"16px",
       border:`1px solid ${T.border}`, padding:"18px", height:"100%" }}>
-      <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700,
-        letterSpacing:"0.6px", marginBottom:"14px" }}>
-        {MONTH_FULL[mi].toUpperCase()} {isCurrent ? `· Day ${dayOfMonth} of ${daysInMonth}` : ""}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:"14px" }}>
+        <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700, letterSpacing:"0.6px" }}>
+          {MONTH_FULL[mi].toUpperCase()} {isCurrent ? `· Day ${dayOfMonth} of ${daysInMonth}` : ""}
+        </div>
+        <div style={{ fontSize:"9px", color:T.textMuted }}>
+          income from {incomeSrcLabel}
+        </div>
       </div>
 
       {/* Income / Spent / Saved row */}
       <div style={{ display:"flex", gap:"0", borderRadius:"10px",
         overflow:"hidden", border:`1px solid ${T.border}`, marginBottom:"12px" }}>
         {[
-          { label:"Income", value:totalIncome, color:T.blue },
+          { label:"Available", value:totalIncome, color:T.blue,
+            note: totalIncome > 0 ? `${incomeSrcLabel} salary` : "no data" },
           { label:"Spent",  value:totalSpent,  color:T.amber },
           { label:"Saved",  value:Math.abs(saved), color:saved>=0?T.accent:T.red,
             prefix: saved < 0 ? "−" : "" },
@@ -212,6 +231,11 @@ function MonthSummaryCard({ mi, fy, incomeData, txData, expensesData }) {
               fontSize:"13px", fontWeight:800, color:item.color, lineHeight:1 }}>
               {item.value ? `${item.prefix||""}${fmtL(item.value)}` : "—"}
             </div>
+            {item.note && (
+              <div style={{ fontSize:"8px", color:T.textMuted, marginTop:"2px" }}>
+                {item.note}
+              </div>
+            )}
           </div>
         ))}
       </div>

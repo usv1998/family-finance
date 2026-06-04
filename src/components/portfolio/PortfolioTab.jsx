@@ -1206,8 +1206,12 @@ export default function PortfolioTab({
           <div style={{ display:"flex", gap:"8px", marginTop:"10px", flexWrap:"wrap", alignItems:"center" }}>
             {/* Sort toggle */}
             <div style={{ display:"flex", background:T.card, borderRadius:"8px", padding:"2px", gap:"2px", flexShrink:0 }}>
-              {[["value","Value"],["gain_pct","Gain %"],["day_change","1D"]].map(([k,lbl]) => (
-                <button key={k} onClick={() => setHoldingSort(k)} style={{
+              {[
+                ["value",      "Sort: Value",   "Largest position first"],
+                ["gain_pct",   "Sort: Gain %",  "Best return first"],
+                ["day_change", "Sort: 1D Move", "Biggest yesterday mover first"],
+              ].map(([k, lbl, tip]) => (
+                <button key={k} onClick={() => setHoldingSort(k)} title={tip} style={{
                   padding:"5px 11px", border:"none", borderRadius:"6px", fontSize:"11px", fontWeight:600,
                   cursor:"pointer", transition:"all 0.15s",
                   background: holdingSort === k ? T.cta : "transparent",

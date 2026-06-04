@@ -17,6 +17,20 @@ function fmtL(n) {
   return `₹${Math.round(n / 1000)}K`;
 }
 
+/**
+ * Salary is paid at end of month M and funds expenses in month M+1.
+ * Returns the FY + month-index of the PREVIOUS month relative to (mi, fy).
+ * Example: mi=2 (June), fy="FY2025-26" → { prevMi:1, prevFY:"FY2025-26" }  (May)
+ *          mi=0 (April), fy="FY2025-26" → { prevMi:11, prevFY:"FY2024-25" } (March)
+ */
+function prevMonthFY(mi, fy) {
+  if (mi === 0) {
+    const fyYear = parseInt(fy.slice(2, 6), 10);
+    return { prevMi: 11, prevFY: `FY${fyYear - 1}-${String(fyYear).slice(2)}` };
+  }
+  return { prevMi: mi - 1, prevFY: fy };
+}
+
 function BudgetBar({ actual, budget, color }) {
   if (!budget) return null;
   const pct      = Math.min(actual / budget * 100, 100);
@@ -48,17 +62,20 @@ function BudgetBar({ actual, budget, color }) {
 
 // ── Monthly summary card ───────────────────────────────────────────────────────
 function MonthlySummaryCard({ mi, fy, incomeData, txActuals, actuals, isTxMonth, categories }) {
-  // Income: sum take_home across all persons for this month
+  // Salary is paid at end of previous month and funds THIS month's expenses.
+  // So: June spending → use May's take-home as "available income".
+  const { prevMi, prevFY } = prevMonthFY(mi, fy);
   const takeHome = PERSONS.reduce((s, p) => {
-    return s + (Number(incomeData?.[fy]?.[p]?.[mi]?.take_home) || 0);
+    return s + (Number(incomeData?.[prevFY]?.[p]?.[prevMi]?.take_home) || 0);
   }, 0);
   const epf = PERSONS.reduce((s, p) => {
-    return s + (Number(incomeData?.[fy]?.[p]?.[mi]?.epf) || 0);
+    return s + (Number(incomeData?.[prevFY]?.[p]?.[prevMi]?.epf) || 0);
   }, 0);
   const espp = PERSONS.reduce((s, p) => {
-    return s + (getEsspINR(incomeData?.[fy]?.[p]?.[mi]) || 0);
+    return s + (getEsspINR(incomeData?.[prevFY]?.[p]?.[prevMi]) || 0);
   }, 0);
   const totalIncome = takeHome + epf + espp;
+  const incomeSrcLabel = MONTH_FULL[prevMi]; // "May salary funds June expenses"
 
   // Spending this month
   const monthData = isTxMonth(mi) ? txActuals[mi] || {} : actuals?.[mi] || {};
@@ -94,9 +111,9 @@ function MonthlySummaryCard({ mi, fy, incomeData, txActuals, actuals, isTxMonth,
       {/* Three-way flow: Income → Spent → Saved */}
       <div style={{ display:"flex", gap:"0", marginBottom:"14px", borderRadius:"10px", overflow:"hidden", border:`1px solid ${T.border}` }}>
         {[
-          { label:"Income",  value:totalIncome, color:T.blue,   note: epf > 0 ? `incl. ₹${Math.round(epf/1000)}K EPF` : null },
-          { label:"Spent",   value:totalSpent,  color:T.amber,  note: null },
-          { label:"Saved",   value:Math.abs(saved), color:saved >= 0 ? T.accent : T.red,
+          { label:"Available", value:totalIncome, color:T.blue,   note: `${incomeSrcLabel} salary` },
+          { label:"Spent",     value:totalSpent,  color:T.amber,  note: null },
+          { label:"Saved",     value:Math.abs(saved), color:saved >= 0 ? T.accent : T.red,
             note: savingsRate != null ? `${Math.round(savingsRate)}% rate` : null, negative: saved < 0 },
         ].map((item, i) => (
           <div key={item.label} style={{
