@@ -27,7 +27,11 @@ export const DEFAULT_ASSUMPTIONS = {
     annual_prepayment: 15 * LAKH,
     loan_start_age: 32,           // Age at which the home loan begins (saves for downpayment before this)
   },
-  starting_position: { liquid_investments: 50 * LAKH, epf_ppf: 5 * LAKH },
+  starting_position: {
+    corpus_for_retirement: 40 * LAKH,  // Current liquid savings earmarked for retirement
+    corpus_for_dp:         10 * LAKH,  // Current liquid savings earmarked for home downpayment
+    epf_ppf:               5  * LAKH,  // EPF + PPF balance (always goes to retirement)
+  },
   income: { salary_monthly: 2.5 * LAKH, salary_growth: 0.10, rsu_annual_post_tax: 0 },
   expenses: { monthly: 1.5 * LAKH, growth: 0.07 },
   child: {
@@ -202,9 +206,16 @@ export function computeLifetimePlan(a, scenario_key) {
   const r = a.retirement.pre_retirement_return;
   const g = a.retirement.sip_growth;
 
-  // Organic corpus growth (starting liquid)
-  const organic = a.starting_position.liquid_investments * Math.pow(1 + r, N)
-                + a.starting_position.epf_ppf * Math.pow(1 + r, N);
+  // Backward compat: old plans stored a single liquid_investments; new plans split it.
+  const sp = a.starting_position;
+  const corpus_for_retirement = sp.corpus_for_retirement
+    ?? (sp.liquid_investments != null ? sp.liquid_investments * 0.8 : 40 * LAKH);
+  const corpus_for_dp = sp.corpus_for_dp
+    ?? (sp.liquid_investments != null ? sp.liquid_investments * 0.2 : 10 * LAKH);
+  const epf_ppf = sp.epf_ppf ?? 0;
+
+  // Organic corpus at retirement = retirement corpus + EPF/PPF, grown at pre-retirement return
+  const organic = (corpus_for_retirement + epf_ppf) * Math.pow(1 + r, N);
 
   const needed = target_corpus - organic;
 
@@ -226,11 +237,14 @@ export function computeLifetimePlan(a, scenario_key) {
 
   // How much downpayment needs to be saved (upfront cash at loan_start_age)
   const upfront_cash = hl ? hl.upfront_cash : 0;
-  // Already-accumulated liquid savings at loan start (organic growth of starting position
-  // over the pre-loan years, minus retirement SIP contributions in that period).
-  // For the cashflow chart we show a "downpayment saving" target bar in the pre-loan phase.
-  const monthly_saving_needed_for_dp = loan_start_offset > 0 && upfront_cash > 0
-    ? upfront_cash / (loan_start_offset * 12)   // simplified linear — illustrative
+
+  // Corpus for DP grows at the pre-retirement return until loan_start_age.
+  // Whatever gap remains must be saved from salary over the pre-loan years.
+  const dp_corpus_grown = corpus_for_dp * Math.pow(1 + r, loan_start_offset);
+  const dp_gap          = Math.max(0, upfront_cash - dp_corpus_grown);
+  // Split the shortfall equally across all pre-loan months
+  const monthly_saving_needed_for_dp = loan_start_offset > 0 && dp_gap > 0
+    ? dp_gap / (loan_start_offset * 12)
     : 0;
 
   const year_data = [];
@@ -292,6 +306,10 @@ export function computeLifetimePlan(a, scenario_key) {
     loan_start_age,
     loan_start_offset,
     upfront_cash,
+    dp_corpus_grown,
+    dp_gap,
+    corpus_for_retirement,
+    corpus_for_dp,
     summary: {
       avg_min_salary_years_1_6: avg_min_1_6,
       avg_min_salary_after_loan: avg_post,

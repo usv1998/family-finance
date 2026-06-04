@@ -69,7 +69,16 @@ function mergePlanWithDefaults(saved) {
     ...D, ...saved,
     profile:           { ...D.profile,           ...(saved.profile           || {}) },
     home:              { ...D.home,              ...(saved.home              || {}) },
-    starting_position: { ...D.starting_position, ...(saved.starting_position || {}) },
+    starting_position: (() => {
+      const sp = saved.starting_position || {};
+      // Migrate old single liquid_investments → split fields
+      const base = { ...D.starting_position, ...sp };
+      if (sp.liquid_investments != null && sp.corpus_for_retirement == null) {
+        base.corpus_for_retirement = Math.round(sp.liquid_investments * 0.8);
+        base.corpus_for_dp         = Math.round(sp.liquid_investments * 0.2);
+      }
+      return base;
+    })(),
     income:            { ...D.income,            ...(saved.income            || {}) },
     expenses:          { ...D.expenses,          ...(saved.expenses          || {}) },
     child:             { ...D.child,             ...(saved.child             || {}) },

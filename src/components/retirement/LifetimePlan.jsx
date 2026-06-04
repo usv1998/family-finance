@@ -318,7 +318,11 @@ export default function LifetimePlan({ plan, onUpdatePlan, onConfirmPlan, confir
               { label: `Target Corpus at ${plan.profile.retirement_age}`, value: fmtCr(result.target_corpus), featured: true },
               { label: `Organic Corpus at ${plan.profile.retirement_age}`, value: fmtCr(result.organic_corpus_at_retirement) },
               { label: "First-Year Retirement SIP", value: result.is_overfunded ? "₹0 (over-funded)" : fmtCr(result.retirement_sip_year_1) + "/mo" },
-              { label: "Home Loan Starts", value: `Age ${result.loan_start_age}`, sub: `Downpayment: ${fmtCr(result.upfront_cash)}`, highlight: true },
+              { label: "Home Loan Starts", value: `Age ${result.loan_start_age}`,
+                sub: result.dp_gap > 0
+                  ? `DP: ${fmtCr(result.upfront_cash)} · Save ${fmtCr(result.dp_gap)} more`
+                  : `DP: ${fmtCr(result.upfront_cash)} · Corpus covers it ✓`,
+                highlight: true },
               { label: "Child Education FV Target", value: fmtCr(result.child_sip_fv_target), sub: `in ${plan.child.years_until_college}yr at ${((plan.child.education_inflation ?? 0.08)*100).toFixed(0)}% inflation` },
               { label: "Child SIP Year 1 (step-up)", value: fmtCr(result.child_sip_year_1) + "/mo", sub: `+${((plan.child.sip_growth ?? 0.05)*100).toFixed(0)}%/yr` },
               { label: "Peak Need", value: `${fmtCr(result.summary.peak_min_salary)}/mo at age ${result.summary.peak_age}` },
@@ -471,10 +475,22 @@ export default function LifetimePlan({ plan, onUpdatePlan, onConfirmPlan, confir
               fmt={pctFmt} onChange={v => set("expenses", "growth", v)} />
           </div>
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "20px" }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "14px", color: T.text }}>Starting Position</div>
-            <SliderRow label="Liquid Investments" value={plan.starting_position.liquid_investments} min={0} max={10 * CRORE} step={LAKH}
-              fmt={fmtCr} onChange={v => set("starting_position", "liquid_investments", v)} />
-            <SliderRow label="EPF / PPF" value={plan.starting_position.epf_ppf} min={0} max={CRORE} step={LAKH}
+            <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "4px", color: T.text }}>Starting Position</div>
+            <div style={{ fontSize: "11px", color: T.textMuted, marginBottom: "14px", lineHeight: 1.4 }}>
+              Split your current liquid corpus between retirement and home downpayment.
+              Both portions grow at the pre-retirement return until they're needed.
+            </div>
+            <SliderRow label="Corpus → Retirement"
+              value={plan.starting_position.corpus_for_retirement ?? 40 * LAKH}
+              min={0} max={5 * CRORE} step={LAKH}
+              fmt={fmtCr} onChange={v => set("starting_position", "corpus_for_retirement", v)} />
+            <SliderRow label="Corpus → Home DP"
+              value={plan.starting_position.corpus_for_dp ?? 10 * LAKH}
+              min={0} max={5 * CRORE} step={LAKH}
+              fmt={fmtCr} onChange={v => set("starting_position", "corpus_for_dp", v)} />
+            <SliderRow label="EPF / PPF (→ Retirement)"
+              value={plan.starting_position.epf_ppf ?? 0}
+              min={0} max={CRORE} step={LAKH}
               fmt={fmtCr} onChange={v => set("starting_position", "epf_ppf", v)} />
           </div>
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "20px" }}>
