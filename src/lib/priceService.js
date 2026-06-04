@@ -39,8 +39,9 @@ export async function fetchStockPriceWithChange(symbol) {
 }
 
 // Fetch prices + 1D change for all stock+MF holdings.
+// onProgress(fetched, total, label) called as each price resolves.
 // Returns { priceMap, changeMap } where changeMap: { symbol: changePct% }
-export async function fetchAllPricesWithChange(holdings) {
+export async function fetchAllPricesWithChange(holdings, onProgress) {
   const stockSymbols = [...new Set(
     holdings
       .filter(h => h.type === "us_stock" || h.type === "in_stock")
@@ -55,12 +56,20 @@ export async function fetchAllPricesWithChange(holdings) {
     holdings.filter(h => h.type === "mf").map(h => h.schemeCode).filter(Boolean)
   )];
 
+  const total = stockSymbols.length + mfCodes.length;
+  let fetched = 0;
+  const tick = (label) => { fetched++; onProgress?.(fetched, total, label); };
+
   const [stockResults, mfResults] = await Promise.all([
     Promise.allSettled(stockSymbols.map(s =>
-      fetchStockPriceWithChange(s).then(r => ({ k: s, price: r?.price, changePct: r?.changePct }))
+      fetchStockPriceWithChange(s)
+        .then(r => { tick(s); return { k: s, price: r?.price, changePct: r?.changePct }; })
+        .catch(() => { tick(s); return { k: s, price: null }; })
     )),
     Promise.allSettled(mfCodes.map(c =>
-      fetchMFNav(c).then(n => ({ k: c, price: n, changePct: null }))
+      fetchMFNav(c)
+        .then(n => { tick(String(c)); return { k: c, price: n, changePct: null }; })
+        .catch(() => { tick(String(c)); return { k: c, price: null }; })
     )),
   ]);
 
@@ -72,7 +81,7 @@ export async function fetchAllPricesWithChange(holdings) {
       if (r.value.changePct != null) changeMap[r.value.k] = r.value.changePct;
     }
   }
-  return { priceMap, changeMap };
+  return { priceMap, changeMap, total, fetched: Object.keys(priceMap).length };
 }
 
 // Fetch latest NAV for an AMFI scheme code.

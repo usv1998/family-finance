@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
          Tooltip, ResponsiveContainer, Label } from "recharts";
 import { T } from "../../lib/theme";
@@ -118,6 +118,78 @@ function TypeBarTip({ active, payload, label, typeData, totalNW }) {
         <span style={{ fontFamily:"monospace", fontWeight:700, color:gc }}>
           {entry.gainPct>=0?"+":""}{entry.gainPct.toFixed(1)}%
         </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Price fetch toast ─────────────────────────────────────────────────────────
+
+function PriceFetchToast({ toast }) {
+  // toast: null | { phase:"loading", fetched, total, label } | { phase:"done", count }
+  const visible = toast !== null;
+
+  const style = {
+    position: "fixed", bottom: "24px", right: "24px", zIndex: 9999,
+    background: toast?.phase === "done" ? "rgba(34,197,94,0.12)" : T.surface,
+    border: `1px solid ${toast?.phase === "done" ? T.accent : T.border}`,
+    borderRadius: "12px", padding: "12px 18px",
+    display: "flex", alignItems: "center", gap: "12px",
+    boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+    minWidth: "220px", maxWidth: "300px",
+    opacity: visible ? 1 : 0,
+    transform: visible ? "translateY(0)" : "translateY(12px)",
+    transition: "opacity 0.25s ease, transform 0.25s ease",
+    pointerEvents: visible ? "auto" : "none",
+  };
+
+  if (!visible) return <div style={style}/>;
+
+  if (toast.phase === "loading") {
+    const pct = toast.total > 0 ? (toast.fetched / toast.total) * 100 : 0;
+    return (
+      <div style={style}>
+        {/* Spinning ring */}
+        <svg width="22" height="22" viewBox="0 0 22 22" style={{ flexShrink: 0 }}>
+          <circle cx="11" cy="11" r="9" fill="none" stroke={T.border} strokeWidth="2.5"/>
+          <circle cx="11" cy="11" r="9" fill="none" stroke={T.accent} strokeWidth="2.5"
+            strokeDasharray={`${2 * Math.PI * 9}`}
+            strokeDashoffset={`${2 * Math.PI * 9 * (1 - pct / 100)}`}
+            strokeLinecap="round"
+            transform="rotate(-90 11 11)"
+            style={{ transition: "stroke-dashoffset 0.3s ease" }}/>
+        </svg>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: "12px", fontWeight: 700, color: T.text, marginBottom: "2px" }}>
+            Fetching prices…
+          </div>
+          <div style={{ fontSize: "11px", color: T.textMuted, display: "flex", justifyContent: "space-between" }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "140px" }}>
+              {toast.label || ""}
+            </span>
+            <span style={{ fontFamily: "'JetBrains Mono',monospace", flexShrink: 0, marginLeft: "8px" }}>
+              {toast.fetched}/{toast.total}
+            </span>
+          </div>
+          {/* thin progress bar */}
+          <div style={{ height: "3px", background: T.border, borderRadius: "2px", marginTop: "6px", overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: T.accent,
+              borderRadius: "2px", transition: "width 0.3s ease" }}/>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // done
+  return (
+    <div style={style}>
+      <span style={{ fontSize: "18px", lineHeight: 1 }}>✓</span>
+      <div>
+        <div style={{ fontSize: "12px", fontWeight: 700, color: T.accent }}>Prices updated</div>
+        <div style={{ fontSize: "11px", color: T.textMuted, marginTop: "2px" }}>
+          {toast.count} price{toast.count !== 1 ? "s" : ""} fetched
+        </div>
       </div>
     </div>
   );
@@ -852,6 +924,8 @@ export default function PortfolioTab({
   const [changeMap,   setChangeMap]   = useState({}); // { symbol: 1D changePct }
   const [fetching,    setFetching]    = useState(false);
   const [fetchedAt,   setFetchedAt]   = useState(null);
+  const [toast,       setToast]       = useState(null); // { phase:"loading"|"done", ... }
+  const toastTimerRef = useRef(null);
 
   const usdinr = liveData?.USDINR || 85;
 
@@ -866,13 +940,25 @@ export default function PortfolioTab({
 
   const fetchPrices = useCallback(async () => {
     setFetching(true);
-    const { priceMap: map, changeMap: chg } = await fetchAllPricesWithChange(allHoldings);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ phase: "loading", fetched: 0, total: 0, label: "" });
+
+    const onProgress = (fetched, total, label) =>
+      setToast({ phase: "loading", fetched, total, label });
+
+    const { priceMap: map, changeMap: chg, fetched: count } =
+      await fetchAllPricesWithChange(allHoldings, onProgress);
+
     if (liveData?.MSFT) map.MSFT = liveData.MSFT;
     if (liveData?.NVDA) map.NVDA = liveData.NVDA;
     setPriceMap(map);
     setChangeMap(chg);
     setFetchedAt(new Date());
     setFetching(false);
+
+    // Transition to success toast, then fade out
+    setToast({ phase: "done", count });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   }, [allHoldings, liveData]);
 
   // Fetch on mount and when holdings count changes
@@ -1072,6 +1158,8 @@ export default function PortfolioTab({
           onAddGrant={onAddRsuGrant}
           onDeleteGrant={onDeleteRsuGrant}/>
       )}
+
+      <PriceFetchToast toast={toast}/>
     </div>
   );
 }
