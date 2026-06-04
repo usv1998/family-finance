@@ -43,7 +43,7 @@ function VerdictBanner({ verdict, peak_rsu_pct, peak_rsu_needed }) {
   );
 }
 
-function LifetimeChart({ yearData }) {
+function LifetimeChart({ yearData, loanStartOffset = 0 }) {
   const [hovered, setHovered] = useState(null); // { idx, x, y, data }
   const svgRef = useRef();
 
@@ -54,11 +54,12 @@ function LifetimeChart({ yearData }) {
   const xW    = (W - PAD * 2) / items.length;
 
   const stackOrder = [
-    { key: "exp_monthly",            color: T.red,     label: "Expenses" },
-    { key: "emi_monthly",            color: T.amber,   label: "EMI" },
-    { key: "prepay_monthly",         color: "#F97316", label: "Prepay" },
-    { key: "child_sip_monthly",      color: T.teal,    label: "Child SIP" },
-    { key: "retirement_sip_monthly", color: T.blue,    label: "Ret SIP" },
+    { key: "exp_monthly",            color: T.red,      label: "Expenses" },
+    { key: "dp_saving_monthly",      color: "#8B5CF6",  label: "DP Saving" },
+    { key: "emi_monthly",            color: T.amber,    label: "EMI" },
+    { key: "prepay_monthly",         color: "#F97316",  label: "Prepay" },
+    { key: "child_sip_monthly",      color: T.teal,     label: "Child SIP" },
+    { key: "retirement_sip_monthly", color: T.blue,     label: "Ret SIP" },
   ];
 
   const lineY = (v) => H - PAD - (v / maxV) * (H - PAD * 1.3);
@@ -133,6 +134,24 @@ function LifetimeChart({ yearData }) {
             </g>
           );
         })}
+
+        {/* Loan-start divider: vertical dashed line at the age EMI begins */}
+        {loanStartOffset > 0 && loanStartOffset < items.length && (() => {
+          const lx = PAD + loanStartOffset * xW;
+          const loanAge = items[loanStartOffset]?.age;
+          return (
+            <g>
+              <line x1={lx} x2={lx} y1={lineY(maxV) - 4} y2={H - PAD}
+                stroke="#8B5CF6" strokeWidth="1.5" strokeDasharray="5,3" opacity="0.8" />
+              <rect x={lx - 30} y={lineY(maxV) - 18} width={60} height={14}
+                fill="#8B5CF6" opacity="0.15" rx="3" />
+              <text x={lx} y={lineY(maxV) - 7} textAnchor="middle"
+                fontSize="8" fontWeight="700" fill="#8B5CF6">
+                Loan @ {loanAge}
+              </text>
+            </g>
+          );
+        })()}
 
         {/* Salary line */}
         <polyline points={salaryPts} stroke={T.accent} strokeWidth="2" fill="none" />
@@ -296,20 +315,24 @@ export default function LifetimePlan({ plan, onUpdatePlan, onConfirmPlan, confir
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: "12px", marginBottom: "20px" }}>
             {[
-              { label: "Target Corpus at 45", value: fmtCr(result.target_corpus), featured: true },
-              { label: "Organic Corpus at 45", value: fmtCr(result.organic_corpus_at_retirement) },
+              { label: `Target Corpus at ${plan.profile.retirement_age}`, value: fmtCr(result.target_corpus), featured: true },
+              { label: `Organic Corpus at ${plan.profile.retirement_age}`, value: fmtCr(result.organic_corpus_at_retirement) },
               { label: "First-Year Retirement SIP", value: result.is_overfunded ? "₹0 (over-funded)" : fmtCr(result.retirement_sip_year_1) + "/mo" },
+              { label: "Home Loan Starts", value: `Age ${result.loan_start_age}`, sub: `Downpayment: ${fmtCr(result.upfront_cash)}`, highlight: true },
               { label: "Child Education FV Target", value: fmtCr(result.child_sip_fv_target), sub: `in ${plan.child.years_until_college}yr at ${((plan.child.education_inflation ?? 0.08)*100).toFixed(0)}% inflation` },
               { label: "Child SIP Year 1 (step-up)", value: fmtCr(result.child_sip_year_1) + "/mo", sub: `+${((plan.child.sip_growth ?? 0.05)*100).toFixed(0)}%/yr` },
               { label: "Peak Need", value: `${fmtCr(result.summary.peak_min_salary)}/mo at age ${result.summary.peak_age}` },
             ].map((c, i) => (
               <div key={i} style={{
-                background: c.featured ? `linear-gradient(135deg,rgba(34,197,94,0.1),${T.card})` : T.card,
-                border: `1px solid ${c.featured ? T.accent : T.border}`,
+                background: c.featured   ? `linear-gradient(135deg,rgba(34,197,94,0.1),${T.card})`
+                          : c.highlight  ? `linear-gradient(135deg,rgba(139,92,246,0.1),${T.card})`
+                          : T.card,
+                border: `1px solid ${c.featured ? T.accent : c.highlight ? "#8B5CF6" : T.border}`,
                 borderRadius: "12px", padding: "16px",
               }}>
                 <div style={{ fontSize: "11px", color: T.textMuted, marginBottom: "4px" }}>{c.label}</div>
-                <div style={{ fontSize: "15px", fontWeight: 800, color: c.featured ? T.accent : T.text, fontFamily: "'JetBrains Mono',monospace" }}>{c.value}</div>
+                <div style={{ fontSize: "15px", fontWeight: 800, fontFamily: "'JetBrains Mono',monospace",
+                  color: c.featured ? T.accent : c.highlight ? "#8B5CF6" : T.text }}>{c.value}</div>
                 {c.sub && <div style={{ fontSize: "10px", color: T.textMuted, marginTop: "3px" }}>{c.sub}</div>}
               </div>
             ))}
@@ -379,16 +402,20 @@ export default function LifetimePlan({ plan, onUpdatePlan, onConfirmPlan, confir
             </div>
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "12px" }}>
               {[
-                { label: "Expenses", color: T.red }, { label: "EMI", color: T.amber },
-                { label: "Child SIP", color: T.teal }, { label: "Ret SIP", color: T.blue },
-                { label: "Salary (line)", color: T.accent }, { label: "Need (dashed)", color: T.red },
+                { label: "Expenses", color: T.red },
+                { label: "DP Saving", color: "#8B5CF6" },
+                { label: "EMI", color: T.amber },
+                { label: "Child SIP", color: T.teal },
+                { label: "Ret SIP", color: T.blue },
+                { label: "Salary (line)", color: T.accent },
+                { label: "Need (dashed)", color: T.red },
               ].map(l => (
                 <div key={l.label} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: T.textDim }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "2px", background: l.color }} />{l.label}
                 </div>
               ))}
             </div>
-            <LifetimeChart yearData={result.year_data} />
+            <LifetimeChart yearData={result.year_data} loanStartOffset={result.loan_start_offset} />
           </div>
         </div>
       )}
@@ -405,6 +432,27 @@ export default function LifetimePlan({ plan, onUpdatePlan, onConfirmPlan, confir
               fmt={v => `${v} yrs`} onChange={v => set("profile", "current_age", v)} />
             <SliderRow label="Retirement Age" value={plan.profile.retirement_age} min={35} max={65} step={1}
               fmt={v => `${v} yrs`} onChange={v => set("profile", "retirement_age", v)} />
+          </div>
+          {/* Home Purchase — loan timing + property details */}
+          <div style={{ background: T.card, border: `1px solid #8B5CF644`, borderRadius: "12px", padding: "20px" }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "4px", color: T.text }}>Home Purchase</div>
+            <div style={{ fontSize: "11px", color: T.textMuted, marginBottom: "14px", lineHeight: 1.4 }}>
+              Before loan start: only Child SIP + Retirement SIP run.
+              Salary surplus during this phase saves for the downpayment.
+            </div>
+            <SliderRow label="Home Loan Start Age" value={plan.home.loan_start_age ?? plan.profile.current_age}
+              min={plan.profile.current_age} max={plan.profile.retirement_age - 5} step={1}
+              fmt={v => `${v} yrs`} onChange={v => set("home", "loan_start_age", v)} />
+            <SliderRow label="Property Value" value={plan.home.property_value} min={50 * LAKH} max={10 * CRORE} step={10 * LAKH}
+              fmt={fmtCr} onChange={v => set("home", "property_value", v)} />
+            <SliderRow label="Down Payment %" value={plan.home.down_payment_pct} min={0.10} max={0.60} step={0.05}
+              fmt={v => `${(v * 100).toFixed(0)}%`} onChange={v => set("home", "down_payment_pct", v)} />
+            <SliderRow label="Loan Tenure" value={plan.home.loan_tenure_years} min={5} max={30} step={1}
+              fmt={v => `${v} yr`} onChange={v => set("home", "loan_tenure_years", v)} />
+            <SliderRow label="Loan Rate" value={plan.home.loan_rate} min={0.065} max={0.12} step={0.0025}
+              fmt={pctFmt} onChange={v => set("home", "loan_rate", v)} />
+            <SliderRow label="Annual Prepayment" value={plan.home.annual_prepayment} min={0} max={50 * LAKH} step={LAKH}
+              fmt={fmtCr} onChange={v => set("home", "annual_prepayment", v)} />
           </div>
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: "12px", padding: "20px" }}>
             <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "14px", color: T.text }}>Income</div>

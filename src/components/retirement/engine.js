@@ -25,6 +25,7 @@ export const DEFAULT_ASSUMPTIONS = {
     loan_rate: 0.0875,
     loan_tenure_years: 20,
     annual_prepayment: 15 * LAKH,
+    loan_start_age: 32,           // Age at which the home loan begins (saves for downpayment before this)
   },
   starting_position: { liquid_investments: 50 * LAKH, epf_ppf: 5 * LAKH },
   income: { salary_monthly: 2.5 * LAKH, salary_growth: 0.10, rsu_annual_post_tax: 0 },
@@ -217,30 +218,55 @@ export function computeLifetimePlan(a, scenario_key) {
     if (retirement_sip_year_1 < 0) retirement_sip_year_1 = 0;
   }
 
+  // Loan start offset: how many years from current_age until the loan begins.
+  // Before this, only child SIP + retirement SIP run; salary surplus builds the downpayment.
+  const loan_start_age   = a.home.loan_start_age ?? a.profile.current_age;
+  const loan_start_offset = Math.max(0, loan_start_age - a.profile.current_age);
+  const emi_end_offset   = hl ? loan_start_offset + Math.ceil(hl.effective_closure_years) : 0;
+
+  // How much downpayment needs to be saved (upfront cash at loan_start_age)
+  const upfront_cash = hl ? hl.upfront_cash : 0;
+  // Already-accumulated liquid savings at loan start (organic growth of starting position
+  // over the pre-loan years, minus retirement SIP contributions in that period).
+  // For the cashflow chart we show a "downpayment saving" target bar in the pre-loan phase.
+  const monthly_saving_needed_for_dp = loan_start_offset > 0 && upfront_cash > 0
+    ? upfront_cash / (loan_start_offset * 12)   // simplified linear — illustrative
+    : 0;
+
   const year_data = [];
-  let emi_active_until = hl ? Math.ceil(hl.effective_closure_years) : 0;
 
   for (let i = 0; i < N; i++) {
     const age = a.profile.current_age + i;
-    const exp_monthly    = a.expenses.monthly * Math.pow(1 + a.expenses.growth, i);
-    const emi_monthly    = (hl && i < emi_active_until) ? hl.monthly_emi : 0;
-    const prepay_monthly = (hl && i < emi_active_until && a.home.annual_prepayment > 0) ? a.home.annual_prepayment / 12 : 0;
-    const ret_sip        = retirement_sip_year_1 * Math.pow(1 + g, i);
-    // Child SIP: step-up each year, stops once college is reached
-    const child_sip      = i < child_years ? child_sip_year_1 * Math.pow(1 + child_sip_g, i) : 0;
-    const total_outflow  = exp_monthly + emi_monthly + prepay_monthly + child_sip + ret_sip;
-    const proj_salary    = a.income.salary_monthly * Math.pow(1 + a.income.salary_growth, i);
-    const rsu_monthly    = a.income.rsu_annual_post_tax / 12;
-    const gap            = Math.max(0, total_outflow - proj_salary);
+    const exp_monthly = a.expenses.monthly * Math.pow(1 + a.expenses.growth, i);
 
-    year_data.push({ age, exp_monthly, emi_monthly, prepay_monthly,
+    // Pre-loan phase: no EMI/prepay; show downpayment saving bar instead
+    const pre_loan        = i < loan_start_offset;
+    const emi_monthly     = (!pre_loan && hl && i < emi_end_offset)   ? hl.monthly_emi : 0;
+    const prepay_monthly  = (!pre_loan && hl && i < emi_end_offset && a.home.annual_prepayment > 0)
+                              ? a.home.annual_prepayment / 12 : 0;
+    // Downpayment saving target shown during pre-loan years only (illustrative bar)
+    const dp_saving_monthly = pre_loan ? monthly_saving_needed_for_dp : 0;
+
+    const ret_sip   = retirement_sip_year_1 * Math.pow(1 + g, i);
+    // Child SIP: step-up each year, stops once college is reached
+    const child_sip = i < child_years ? child_sip_year_1 * Math.pow(1 + child_sip_g, i) : 0;
+
+    const total_outflow = exp_monthly + emi_monthly + prepay_monthly + child_sip + ret_sip + dp_saving_monthly;
+    const proj_salary   = a.income.salary_monthly * Math.pow(1 + a.income.salary_growth, i);
+    const rsu_monthly   = a.income.rsu_annual_post_tax / 12;
+    const gap           = Math.max(0, total_outflow - proj_salary);
+
+    year_data.push({
+      age, pre_loan,
+      exp_monthly, emi_monthly, prepay_monthly, dp_saving_monthly,
       child_sip_monthly: child_sip, retirement_sip_monthly: ret_sip, child_active: i < child_years,
       total_outflow_monthly: total_outflow, projected_salary_monthly: proj_salary,
-      rsu_monthly, gap_monthly: gap });
+      rsu_monthly, gap_monthly: gap,
+    });
   }
 
   const avg_min_1_6 = year_data.slice(0, 6).reduce((s, y) => s + y.total_outflow_monthly, 0) / Math.min(6, year_data.length);
-  const post_loan   = year_data.slice(emi_active_until);
+  const post_loan   = year_data.slice(emi_end_offset);
   const avg_post    = post_loan.length ? post_loan.reduce((s, y) => s + y.total_outflow_monthly, 0) / post_loan.length : 0;
   const peak        = year_data.reduce((best, y) => y.total_outflow_monthly > best.total_outflow_monthly ? y : best, year_data[0] || {});
 
@@ -263,6 +289,9 @@ export function computeLifetimePlan(a, scenario_key) {
     target_corpus,
     is_overfunded: needed <= 0,
     year_data,
+    loan_start_age,
+    loan_start_offset,
+    upfront_cash,
     summary: {
       avg_min_salary_years_1_6: avg_min_1_6,
       avg_min_salary_after_loan: avg_post,
