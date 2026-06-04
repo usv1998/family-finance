@@ -755,7 +755,7 @@ export default function DashboardTab({
         </div>
       </div>
 
-      {/* ── Section 2: Month Summary + Goals ── */}
+      {/* ── Section 2a: Month Summary + Long-term Goal Rings ── */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px" }}>
 
         {/* Month Summary */}
@@ -765,7 +765,7 @@ export default function DashboardTab({
           expensesData={expensesData}
         />
 
-        {/* Goal Progress Rings — long-term goals only */}
+        {/* Long-term Goal Rings */}
         {(() => {
           const longGoals = goals.filter(g => g.termType === "long");
           return (
@@ -776,38 +776,102 @@ export default function DashboardTab({
                 <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700, letterSpacing:"0.6px" }}>
                   LONG-TERM GOALS
                 </div>
-                {longGoals.length > 0 && (
-                  <button onClick={() => window.dispatchEvent(new CustomEvent("dk-switch-tab", { detail:"investments" }))}
-                    style={{ background:"none", border:"none", color:T.cta, fontSize:"10px",
-                      fontWeight:700, cursor:"pointer", padding:0 }}>
-                    All goals →
-                  </button>
-                )}
+                <button onClick={() => window.dispatchEvent(new CustomEvent("dk-switch-tab", { detail:"investments" }))}
+                  style={{ background:"none", border:"none", color:T.cta, fontSize:"10px",
+                    fontWeight:700, cursor:"pointer", padding:0 }}>
+                  Details →
+                </button>
               </div>
-
               {longGoals.length === 0 ? (
-                <div style={{ textAlign:"center", padding:"24px 16px", color:T.textMuted, fontSize:"12px", lineHeight:1.7 }}>
+                <div style={{ textAlign:"center", padding:"20px 8px", color:T.textMuted, fontSize:"12px", lineHeight:1.7 }}>
                   No long-term goals yet.<br/>
-                  Add them in the <strong style={{ color:T.cta }}>Investments</strong> tab.
+                  <span style={{ fontSize:"11px" }}>Add in Investments tab.</span>
                 </div>
               ) : (
-                <div style={{ display:"flex", gap:"16px", flexWrap:"wrap", justifyContent:"center" }}>
+                <div style={{ display:"flex", gap:"12px", flexWrap:"wrap", justifyContent:"center" }}>
                   {longGoals.slice(0, 3).map(g => (
-                    <GoalRing key={g.id} goal={g} size={longGoals.length === 1 ? 100 : 82}
+                    <GoalRing key={g.id} goal={g} size={longGoals.length === 1 ? 100 : 80}
                       liveValue={goalLiveValues[g.id] ?? null}/>
                   ))}
                 </div>
               )}
-
               {longGoals.length > 3 && (
-                <div style={{ textAlign:"center", marginTop:"10px", fontSize:"10px", color:T.textMuted }}>
-                  +{longGoals.length - 3} more in Investments tab
+                <div style={{ textAlign:"center", marginTop:"8px", fontSize:"10px", color:T.textMuted }}>
+                  +{longGoals.length - 3} more
                 </div>
               )}
             </div>
           );
         })()}
       </div>
+
+      {/* ── Section 2b: Short-term Goals ── */}
+      {(() => {
+        const shortGoals = goals.filter(g => g.termType !== "long");
+        if (shortGoals.length === 0) return null;
+        return (
+          <div style={{ background:T.surface, borderRadius:"16px",
+            border:`1px solid ${T.border}`, padding:"18px" }}>
+            <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700,
+              letterSpacing:"0.6px", marginBottom:"14px" }}>
+              SHORT-TERM GOALS
+            </div>
+            <div style={{ display:"grid",
+              gridTemplateColumns:`repeat(auto-fill, minmax(200px, 1fr))`,
+              gap:"10px" }}>
+              {shortGoals.map(g => {
+                const target   = Number(g.targetAmount) || 0;
+                const saved    = Number(g.savedAmount)  || 0;
+                const pct      = target > 0 ? Math.min(100, saved / target * 100) : 0;
+                const dueDate  = g.targetDate ? new Date(g.targetDate) : null;
+                const today    = new Date();
+                const daysLeft = dueDate ? Math.ceil((dueDate - today) / 86400000) : null;
+                const monthsLeft = daysLeft != null ? Math.max(0, Math.round(daysLeft / 30.44)) : null;
+                const remaining  = Math.max(0, target - saved);
+                const monthlyNeeded = monthsLeft > 0 ? remaining / monthsLeft : null;
+                const overdue  = daysLeft !== null && daysLeft < 0;
+                const urgent   = daysLeft !== null && daysLeft <= 60 && !overdue;
+                const barColor = pct >= 100 ? T.accent : urgent ? T.amber : T.blue;
+
+                return (
+                  <div key={g.id} style={{ background:T.card, borderRadius:"12px",
+                    border:`1px solid ${pct >= 100 ? T.accent : T.border}`, padding:"12px 14px" }}>
+                    <div style={{ fontSize:"12px", fontWeight:700, color:T.text,
+                      marginBottom:"2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {pct >= 100 && <span style={{ color:T.accent }}>✓ </span>}{g.name}
+                    </div>
+                    {dueDate && (
+                      <div style={{ fontSize:"10px", color: overdue ? T.red : urgent ? T.amber : T.textMuted,
+                        marginBottom:"8px" }}>
+                        {overdue ? `${Math.abs(daysLeft)}d overdue` : `${monthsLeft}mo left`}
+                      </div>
+                    )}
+                    {/* Progress bar */}
+                    <div style={{ height:"5px", background:T.border, borderRadius:"3px",
+                      overflow:"hidden", marginBottom:"6px" }}>
+                      <div style={{ height:"100%", width:`${pct}%`, background:barColor,
+                        borderRadius:"3px", transition:"width 0.4s ease" }}/>
+                    </div>
+                    <div style={{ display:"flex", justifyContent:"space-between",
+                      fontSize:"10px", color:T.textMuted }}>
+                      <span style={{ fontFamily:"'JetBrains Mono',monospace", color:T.text, fontWeight:700 }}>
+                        {fmtL(saved)}
+                      </span>
+                      <span>{Math.round(pct)}% of {fmtL(target)}</span>
+                    </div>
+                    {monthlyNeeded != null && pct < 100 && (
+                      <div style={{ fontSize:"9px", color:urgent ? T.amber : T.textMuted,
+                        marginTop:"4px", fontWeight:600 }}>
+                        {fmtL(Math.ceil(monthlyNeeded))}/mo needed
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Section 3: Upcoming RSU Vests ── */}
       <div style={{ background:T.surface, borderRadius:"16px",
