@@ -1020,7 +1020,7 @@ export default function PortfolioTab({
       g[h.category][h.type].push(h);
     }
     return g;
-  }, [enriched]);
+  }, [filteredEnriched]);
 
   const staleMins = fetchedAt ? Math.round((Date.now() - fetchedAt) / 60000) : null;
 
@@ -1156,7 +1156,8 @@ export default function PortfolioTab({
           onAdd={onAddRsuEvent}
           onDelete={onDeleteRsuEvent}
           onAddGrant={onAddRsuGrant}
-          onDeleteGrant={onDeleteRsuGrant}/>
+          onDeleteGrant={onDeleteRsuGrant}
+          personFilter={personFilter}/>
       )}
 
       <PriceFetchToast toast={toast}/>

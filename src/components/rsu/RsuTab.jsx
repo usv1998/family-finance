@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { T } from "../../lib/theme";
 import { PERSONS, STOCKS } from "../../lib/constants";
 import { getUpcomingVests } from "../../lib/grantUtils";
@@ -8,10 +8,16 @@ import RsuTable from "./RsuTable";
 import GrantForm from "./GrantForm";
 import GrantList from "./GrantList";
 
-export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDelete, onAddGrant, onDeleteGrant }) {
+export default function RsuTab({ rsuData, rsuGrants, fy, liveData, onAdd, onDelete, onAddGrant, onDeleteGrant, personFilter }) {
   const [view,            setView]            = useState("events");
-  const [rsuFilterPerson, setRsuFilterPerson] = useState("all");
+  const [rsuFilterPerson, setRsuFilterPerson] = useState(personFilter && personFilter !== "all" ? personFilter : "all");
   const [rsuFilterStock,  setRsuFilterStock]  = useState("all");
+
+  // Sync person filter from parent (portfolio tab toggle)
+  useEffect(() => {
+    if (personFilter && personFilter !== "all") setRsuFilterPerson(personFilter);
+    else setRsuFilterPerson("all");
+  }, [personFilter]);
 
   const upcoming  = getUpcomingVests(rsuGrants || [], 3);
   const allEvents = Object.values(rsuData || {}).flat();
