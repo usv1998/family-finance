@@ -1,8 +1,81 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { T } from "../../lib/theme";
 import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { genId } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER, PERSON_STOCK } from "../../lib/constants";
+import { computeLifetimePlan } from "../retirement/engine";
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function fmtL(n) {
+  if (!n && n !== 0) return "—";
+  const abs = Math.abs(n), sign = n < 0 ? "−" : "";
+  if (abs >= 1e7) return `${sign}₹${(abs/1e7).toFixed(2)}Cr`;
+  if (abs >= 1e5) return `${sign}₹${(abs/1e5).toFixed(1)}L`;
+  if (abs >= 1e3) return `${sign}₹${Math.round(abs/1000)}K`;
+  return `${sign}₹${Math.round(abs)}`;
+}
+
+// Compute what portfolio should be at FY end (March 31) to stay on plan.
+// Uses monthly SIP from confirmed plan + implied growth to project FY-end value.
+function computeFyTarget(liveValue, targetAmount, targetDate, monthlySIP = 0, annualReturn = 0.12) {
+  if (!targetDate || !targetAmount || targetAmount <= 0) return null;
+  const today   = new Date();
+  const yr      = today.getMonth() >= 3 ? today.getFullYear() + 1 : today.getFullYear();
+  const fyEnd   = new Date(`${yr}-03-31`);
+  // months from today to FY end (0-indexed diff)
+  const m = Math.max(0,
+    (fyEnd.getFullYear() - today.getFullYear()) * 12 + (fyEnd.getMonth() - today.getMonth())
+  );
+  if (m === 0) return null;
+  const r = Math.pow(1 + annualReturn, 1 / 12) - 1;
+  const corpus = (liveValue || 0) * Math.pow(1 + r, m)
+    + (monthlySIP > 0 ? monthlySIP * (Math.pow(1 + r, m) - 1) / r : 0);
+  return corpus;
+}
+
+// SVG ring for long-term goal with FY milestone marker
+function GoalProgressRing({ pct, fyPct, size = 80, color = T.blue }) {
+  const r     = size / 2 - 7;
+  const circ  = 2 * Math.PI * r;
+  const dash  = Math.min(pct / 100, 1) * circ;
+  const fyDash = Math.min(fyPct / 100, 1) * circ;
+  // FY marker position on ring (angle from top)
+  const fyAngle = (fyPct / 100) * 2 * Math.PI - Math.PI / 2;
+  const mx = size / 2 + r * Math.cos(fyAngle);
+  const my = size / 2 + r * Math.sin(fyAngle);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* Track */}
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={T.border} strokeWidth="5"/>
+      {/* FY target arc (light) */}
+      <circle cx={size/2} cy={size/2} r={r} fill="none"
+        stroke={color} strokeWidth="5" opacity="0.2"
+        strokeDasharray={`${fyDash} ${circ - fyDash}`}
+        strokeDashoffset={circ / 4}
+        strokeLinecap="round"/>
+      {/* Actual progress */}
+      <circle cx={size/2} cy={size/2} r={r} fill="none"
+        stroke={color} strokeWidth="5"
+        strokeDasharray={`${dash} ${circ - dash}`}
+        strokeDashoffset={circ / 4}
+        strokeLinecap="round"
+        style={{ transition:"stroke-dasharray 0.6s ease" }}/>
+      {/* FY milestone dot */}
+      {fyPct > 0 && fyPct < 100 && (
+        <circle cx={mx} cy={my} r="4" fill={T.amber} stroke={T.bg} strokeWidth="1.5"/>
+      )}
+      {/* Center % */}
+      <text x={size/2} y={size/2 - 4} textAnchor="middle"
+        fill={T.text} fontSize={size < 70 ? "10" : "13"} fontWeight="800">
+        {Math.round(pct)}%
+      </text>
+      <text x={size/2} y={size/2 + 10} textAnchor="middle"
+        fill={T.textMuted} fontSize="8">
+        {pct >= 100 ? "done" : "of goal"}
+      </text>
+    </svg>
+  );
+}
 
 const EMPTY_GOAL = { name:"", targetAmount:"", targetDate:"", termType:"short", instrument:"", savedAmount:"", notes:"" };
 
@@ -12,7 +85,7 @@ const DEFAULT_LONG_GOALS = [
   { name:"Child Education",   targetAmount:"10000000", targetDate:"2038-04-01", termType:"long", instrument:"Equity MF",    savedAmount:"0", notes:"" },
 ];
 
-export default function InvestmentsTab({ incomeData, rsuData, investmentsData, fy, onUpdateInvestments }) {
+export default function InvestmentsTab({ incomeData, rsuData, investmentsData, fy, onUpdateInvestments, goalLiveValues = {}, retirementData }) {
   const inv = investmentsData?.[fy] || {};
   const epfOpening = inv.epfOpening || { Selva:0, Akshaya:0 };
   const goals      = investmentsData?.goals || [];
@@ -24,6 +97,32 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
 
   const updateInv   = (patch) => onUpdateInvestments(fy, { ...inv, ...patch });
   const updateGoals = (next)  => onUpdateInvestments("goals", next);
+
+  // Derive planned SIPs from retirementData for FY target computation
+  const planSIPs = useMemo(() => {
+    const plan = retirementData?.plan;
+    if (!plan) return {};
+    try {
+      const confirmedScenario = retirementData?.confirmedScenario || "1L";
+      const result = computeLifetimePlan(plan, confirmedScenario);
+      return {
+        retirement:     result.retirement_sip_year_1,   // monthly
+        childEducation: result.child_sip_year_1,         // monthly
+        downpayment:    result.upfront_cash > 0
+          ? result.dp_gap / Math.max(1, result.loan_start_offset * 12)
+          : 0,
+      };
+    } catch { return {}; }
+  }, [retirementData]);
+
+  // Map goal name → planSIP key
+  function getPlanSIP(goal) {
+    const n = goal.name?.toLowerCase() || "";
+    if (n.includes("retire"))     return planSIPs.retirement     || goal.monthlySIP || 0;
+    if (n.includes("child") || n.includes("educat")) return planSIPs.childEducation || goal.monthlySIP || 0;
+    if (n.includes("down") || n.includes("home") || n.includes("house")) return planSIPs.downpayment || goal.monthlySIP || 0;
+    return goal.monthlySIP || 0;
+  }
 
   const addGoal = () => {
     if (!newGoal.name || !newGoal.targetAmount) return;
@@ -184,9 +283,151 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
               ))}
             </div>
           </div>
-        ) : (
-          <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
-            {goals.map(g => {
+        ) : (() => {
+          const longGoals  = goals.filter(g => g.termType === "long");
+          const shortGoals = goals.filter(g => g.termType !== "long");
+          return (
+          <div style={{ display:"flex", flexDirection:"column", gap:"20px" }}>
+
+            {/* ── Long-term goals ── */}
+            {longGoals.length > 0 && (
+              <div>
+                <div style={{ fontSize:"10px", fontWeight:700, color:T.textMuted, letterSpacing:"0.5px",
+                  marginBottom:"12px" }}>LONG-TERM · Portfolio tracked</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
+                  {longGoals.map(g => {
+                    const target   = Number(g.targetAmount) || 0;
+                    const liveVal  = goalLiveValues[g.id] ?? null;
+                    const saved    = liveVal != null ? liveVal : (Number(g.savedAmount) || 0);
+                    const isLive   = liveVal != null;
+                    const pct      = target > 0 ? Math.min(100, saved / target * 100) : 0;
+                    const monthlySIP = getPlanSIP(g);
+                    const fyTarget = computeFyTarget(saved, target, g.targetDate, monthlySIP);
+                    const fyPct    = fyTarget && target > 0 ? Math.min(100, fyTarget / target * 100) : 0;
+                    const onTrack  = fyTarget != null && saved >= fyTarget * 0.95;
+                    const fyShortfall = fyTarget != null ? Math.max(0, fyTarget - saved) : null;
+                    const dueDate  = g.targetDate ? new Date(g.targetDate) : null;
+                    const today    = new Date();
+                    const monthsLeft = dueDate ? Math.max(0, Math.round((dueDate - today) / (30.44 * 86400000))) : null;
+                    const goalColor = pct >= 100 ? T.accent : pct >= 60 ? T.blue : T.purple;
+
+                    return (
+                      <div key={g.id} style={{ padding:"16px", background:T.bg, borderRadius:"14px",
+                        border:`1px solid ${T.border}`, display:"flex", gap:"16px", alignItems:"flex-start" }}>
+
+                        {/* Ring */}
+                        <div style={{ flexShrink:0 }}>
+                          <GoalProgressRing pct={pct} fyPct={fyPct} size={84} color={goalColor}/>
+                          {isLive && (
+                            <div style={{ textAlign:"center", fontSize:"8px", color:T.accent,
+                              fontWeight:700, marginTop:"3px" }}>● live</div>
+                          )}
+                        </div>
+
+                        {/* Details */}
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start",
+                            flexWrap:"wrap", gap:"6px", marginBottom:"8px" }}>
+                            <div>
+                              <div style={{ fontSize:"14px", fontWeight:700, color:T.text }}>{g.name}</div>
+                              {dueDate && (
+                                <div style={{ fontSize:"11px", color:T.textMuted, marginTop:"2px" }}>
+                                  Target {dueDate.getFullYear()} · {monthsLeft} months left
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
+                              <button onClick={() => { if (window.confirm("Remove this goal?")) removeGoal(g.id); }}
+                                style={{ background:"none", border:"none", color:T.red, cursor:"pointer",
+                                  fontSize:"13px", opacity:0.5, padding:"2px 4px" }}>✕</button>
+                            </div>
+                          </div>
+
+                          {/* Value row */}
+                          <div style={{ display:"flex", gap:"20px", marginBottom:"10px", flexWrap:"wrap" }}>
+                            <div>
+                              <div style={{ fontSize:"9px", color:T.textMuted, fontWeight:700, marginBottom:"2px" }}>
+                                {isLive ? "PORTFOLIO NOW" : "SAVED"}
+                              </div>
+                              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"16px",
+                                fontWeight:800, color: isLive ? T.accent : T.text }}>
+                                {fmtL(saved)}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize:"9px", color:T.textMuted, fontWeight:700, marginBottom:"2px" }}>FINAL TARGET</div>
+                              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"16px",
+                                fontWeight:800, color:T.text }}>{fmtL(target)}</div>
+                            </div>
+                            {monthlySIP > 0 && (
+                              <div>
+                                <div style={{ fontSize:"9px", color:T.textMuted, fontWeight:700, marginBottom:"2px" }}>PLAN SIP</div>
+                                <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"16px",
+                                  fontWeight:800, color:T.blue }}>{fmtL(monthlySIP)}/mo</div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Dual progress bar: FY milestone + overall */}
+                          <div style={{ marginBottom:"8px" }}>
+                            <div style={{ height:"8px", background:T.border, borderRadius:"4px",
+                              overflow:"visible", position:"relative" }}>
+                              {/* FY target marker line */}
+                              {fyPct > 0 && fyPct < 100 && (
+                                <div style={{ position:"absolute", left:`${fyPct}%`, top:"-3px",
+                                  width:"2px", height:"14px", background:T.amber,
+                                  borderRadius:"1px", zIndex:2 }}/>
+                              )}
+                              {/* Actual progress bar */}
+                              <div style={{ height:"100%", width:`${Math.min(100, pct)}%`,
+                                background: goalColor, borderRadius:"4px",
+                                transition:"width 0.5s ease", position:"relative", zIndex:1 }}/>
+                            </div>
+                            <div style={{ display:"flex", justifyContent:"space-between",
+                              fontSize:"9px", color:T.textMuted, marginTop:"4px" }}>
+                              <span>{fmtL(saved)} now</span>
+                              {fyTarget != null && (
+                                <span style={{ color:T.amber }}>
+                                  ▲ FY target {fmtL(fyTarget)}
+                                </span>
+                              )}
+                              <span>{fmtL(target)} goal</span>
+                            </div>
+                          </div>
+
+                          {/* FY on-track badge */}
+                          {fyTarget != null && (
+                            <div style={{ display:"inline-flex", alignItems:"center", gap:"6px",
+                              padding:"4px 10px", borderRadius:"6px", fontSize:"10px", fontWeight:700,
+                              background: onTrack ? `${T.accent}15` : `${T.amber}15`,
+                              color: onTrack ? T.accent : T.amber }}>
+                              {onTrack
+                                ? `✓ On track for this FY`
+                                : `Need ${fmtL(fyShortfall)} more by Mar 31 to stay on plan`}
+                            </div>
+                          )}
+                          {!isLive && (
+                            <div style={{ fontSize:"10px", color:T.textMuted, marginTop:"6px", fontStyle:"italic" }}>
+                              Tag holdings in Portfolio → Holdings to show live value
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── Short-term goals ── */}
+            {shortGoals.length > 0 && (
+              <div>
+                {longGoals.length > 0 && (
+                  <div style={{ fontSize:"10px", fontWeight:700, color:T.textMuted, letterSpacing:"0.5px",
+                    marginBottom:"12px" }}>SHORT-TERM · Financial milestones</div>
+                )}
+                <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
+                {shortGoals.map(g => {
               const target   = Number(g.targetAmount) || 0;
               const saved    = Number(g.savedAmount)  || 0;
               const pct      = target > 0 ? Math.min(100, saved / target * 100) : 0;
@@ -296,8 +537,13 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                 </div>
               );
             })}
+                </div>
+              </div>
+            )}
+
           </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* ── US Stocks (RSU + ESPP) ── */}

@@ -444,6 +444,7 @@ export default function DashboardTab({
   txData, rsuGrants, liveData, fy,
   nwHistory, onSaveNwSnapshot,
   personFilter, onPersonFilterChange,
+  onGoalLiveValuesComputed,
 }) {
   const derivedGoalTags = investmentsData?.derivedGoalTags || {};
   const [priceMap,     setPriceMap]     = useState({});
@@ -613,6 +614,13 @@ export default function DashboardTab({
     return map;
   }, [holdingsData, derivedGoalTags, priceMap, usdinr, rsuData, incomeData, investmentsData]);
 
+  // Emit goalLiveValues to parent so InvestmentsTab can show live values without re-fetching
+  useEffect(() => {
+    if (Object.keys(goalLiveValues).length > 0) {
+      onGoalLiveValuesComputed?.(goalLiveValues);
+    }
+  }, [goalLiveValues]);
+
   // Upcoming RSU vests (next 5 for dashboard)
   const upcoming = useMemo(() =>
     getUpcomingVests(rsuGrants || [], 5),
@@ -757,33 +765,48 @@ export default function DashboardTab({
           expensesData={expensesData}
         />
 
-        {/* Goal Progress Rings */}
-        <div style={{ background:T.surface, borderRadius:"16px",
-          border:`1px solid ${T.border}`, padding:"18px" }}>
-          <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700,
-            letterSpacing:"0.6px", marginBottom:"16px" }}>GOALS PROGRESS</div>
+        {/* Goal Progress Rings — long-term goals only */}
+        {(() => {
+          const longGoals = goals.filter(g => g.termType === "long");
+          return (
+            <div style={{ background:T.surface, borderRadius:"16px",
+              border:`1px solid ${T.border}`, padding:"18px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                marginBottom:"16px" }}>
+                <div style={{ fontSize:"10px", color:T.textMuted, fontWeight:700, letterSpacing:"0.6px" }}>
+                  LONG-TERM GOALS
+                </div>
+                {longGoals.length > 0 && (
+                  <button onClick={() => window.dispatchEvent(new CustomEvent("dk-switch-tab", { detail:"investments" }))}
+                    style={{ background:"none", border:"none", color:T.cta, fontSize:"10px",
+                      fontWeight:700, cursor:"pointer", padding:0 }}>
+                    All goals →
+                  </button>
+                )}
+              </div>
 
-          {goals.length === 0 ? (
-            <div style={{ textAlign:"center", padding:"24px 16px", color:T.textMuted, fontSize:"12px", lineHeight:1.7 }}>
-              No goals yet.<br/>
-              Add goals in the <strong style={{ color:T.cta }}>Investments</strong> tab.
-            </div>
-          ) : (
-            <div style={{ display:"flex", gap:"16px", flexWrap:"wrap", justifyContent:"center" }}>
-              {goals.slice(0, 4).map(g => (
-                <GoalRing key={g.id} goal={g} size={goals.length === 1 ? 100 : 82}
-                  liveValue={goalLiveValues[g.id] ?? null}/>
-              ))}
-            </div>
-          )}
+              {longGoals.length === 0 ? (
+                <div style={{ textAlign:"center", padding:"24px 16px", color:T.textMuted, fontSize:"12px", lineHeight:1.7 }}>
+                  No long-term goals yet.<br/>
+                  Add them in the <strong style={{ color:T.cta }}>Investments</strong> tab.
+                </div>
+              ) : (
+                <div style={{ display:"flex", gap:"16px", flexWrap:"wrap", justifyContent:"center" }}>
+                  {longGoals.slice(0, 3).map(g => (
+                    <GoalRing key={g.id} goal={g} size={longGoals.length === 1 ? 100 : 82}
+                      liveValue={goalLiveValues[g.id] ?? null}/>
+                  ))}
+                </div>
+              )}
 
-          {goals.length > 4 && (
-            <div style={{ textAlign:"center", marginTop:"10px",
-              fontSize:"10px", color:T.textMuted }}>
-              +{goals.length - 4} more in Investments tab
+              {longGoals.length > 3 && (
+                <div style={{ textAlign:"center", marginTop:"10px", fontSize:"10px", color:T.textMuted }}>
+                  +{longGoals.length - 3} more in Investments tab
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })()}
       </div>
 
       {/* ── Section 3: Upcoming RSU Vests ── */}

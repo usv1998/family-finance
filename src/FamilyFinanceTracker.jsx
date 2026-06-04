@@ -33,6 +33,7 @@ export default function FamilyFinanceTracker() {
   const [txData,         setTxData]         = useState([]);
   const [retirementData, setRetirementData] = useState({});
   const [nwHistory,      setNwHistory]      = useState([]); // [{ date:"YYYY-MM-DD", value }]
+  const [goalLiveValues, setGoalLiveValues] = useState({}); // { [goalId]: liveINR } — cached from Dashboard
   const [liveData,       setLiveData]       = useState(LIVE_DEFAULTS);
   const [refreshing,     setRefreshing]     = useState(false);
   const [loading,        setLoading]        = useState(true);
@@ -572,7 +573,7 @@ export default function FamilyFinanceTracker() {
 
     // Save updated goals + confirmedAt in retirementData
     const nextInv = { ...investmentsData, goals: updatedGoals };
-    const nextRet = { ...retirementData, plan: retirementData?.plan, confirmedAt: planSummary.confirmedAt };
+    const nextRet = { ...retirementData, plan: retirementData?.plan, confirmedAt: planSummary.confirmedAt, confirmedScenario: planSummary.scenario };
     setInvestmentsData(nextInv);
     setRetirementData(nextRet);
     persist(incomeData, rsuData, nextInv, expensesData, portfolioData, rsuGrants, holdingsData, txData, nextRet);
@@ -729,6 +730,7 @@ export default function FamilyFinanceTracker() {
             onSaveNwSnapshot={saveNwSnapshot}
             personFilter={personFilter}
             onPersonFilterChange={updatePersonFilter}
+            onGoalLiveValuesComputed={setGoalLiveValues}
           />
         )}
         {activeTab==="income"&&(
@@ -750,6 +752,8 @@ export default function FamilyFinanceTracker() {
             investmentsData={investmentsData}
             fy={fy}
             onUpdateInvestments={updateInvestments}
+            goalLiveValues={goalLiveValues}
+            retirementData={retirementData}
           />
         )}
         {activeTab==="expenses"&&(
