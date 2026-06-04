@@ -109,8 +109,6 @@ export default function FamilyFinanceTracker() {
         if(saved.incomeData)      setIncomeData(saved.incomeData);
         if(saved.rsuData)         setRsuData(saved.rsuData);
         if(saved.investmentsData) setInvestmentsData(saved.investmentsData);
-        if(saved.expensesData)    setExpensesData(saved.expensesData);
-        else                      setExpensesData(SEED_DATA.expensesData);
         if(saved.portfolioData)   setPortfolioData(saved.portfolioData);
         else                      setPortfolioData(SEED_DATA.portfolioData);
         if(saved.rsuGrants)       setRsuGrants(saved.rsuGrants);
@@ -119,6 +117,10 @@ export default function FamilyFinanceTracker() {
         if(saved.retirementData)  setRetirementData(saved.retirementData);
         // Seed imported transactions once if txData is empty
         if(saved.txData?.length > 0) {
+          // Always rebuild txActuals from txData on load to heal any stale persisted state
+          const baseExp = saved.expensesData || SEED_DATA.expensesData;
+          const healedExp = buildExpensesWithTx(saved.txData, baseExp);
+          setExpensesData(healedExp);
           setTxData(saved.txData);
         } else {
           setTxData(IMPORTED_TX);
@@ -359,33 +361,29 @@ export default function FamilyFinanceTracker() {
 
   // ── Daily transaction handlers ──────────────────────────────────────────
   const addTx = (tx) => {
-    const next = [...txData, tx];
-    setTxData(next);
-    // Auto-roll: recompute expensesData actuals for the tx's FY month
-    rollTxIntoExpenses(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next, retirementData);
+    const nextTx  = [...txData, tx];
+    const nextExp = rollTxIntoExpenses(nextTx); // returns updated expensesData
+    setTxData(nextTx);
+    persist(incomeData, rsuData, investmentsData, nextExp, portfolioData, rsuGrants, holdingsData, nextTx, retirementData);
   };
 
   const deleteTx = (id) => {
-    const next = txData.filter(t => t.id !== id);
-    setTxData(next);
-    rollTxIntoExpenses(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next, retirementData);
+    const nextTx  = txData.filter(t => t.id !== id);
+    const nextExp = rollTxIntoExpenses(nextTx);
+    setTxData(nextTx);
+    persist(incomeData, rsuData, investmentsData, nextExp, portfolioData, rsuGrants, holdingsData, nextTx, retirementData);
   };
 
   const editTx = (tx) => {
-    const next = txData.map(t => t.id === tx.id ? tx : t);
-    setTxData(next);
-    rollTxIntoExpenses(next);
-    persist(incomeData, rsuData, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, next, retirementData);
+    const nextTx  = txData.map(t => t.id === tx.id ? tx : t);
+    const nextExp = rollTxIntoExpenses(nextTx);
+    setTxData(nextTx);
+    persist(incomeData, rsuData, investmentsData, nextExp, portfolioData, rsuGrants, holdingsData, nextTx, retirementData);
   };
 
-  // Recompute TX-derived actuals from txList for all FY months.
-  // Stored in txActuals (separate from manually-entered actuals) so the
-  // two sources never collide. ExpensesTab reads txActuals preferentially
-  // for months that have any transactions.
-  const rollTxIntoExpenses = (txList) => {
-    // Build map: { fyKey: { monthIdx: { catId: total } } }
+  // Pure function: compute new expensesData with txActuals rebuilt from txList.
+  // Returns the new expensesData object synchronously — no setState side effects.
+  const buildExpensesWithTx = (txList, prevExpenses) => {
     const fyMap = {};
     for (const tx of txList) {
       const [y, m] = tx.date.split("-").map(Number); // m = 1-12
@@ -396,20 +394,24 @@ export default function FamilyFinanceTracker() {
       if (!fyMap[fyKey][mi])   fyMap[fyKey][mi]   = {};
       fyMap[fyKey][mi][tx.categoryId] = (fyMap[fyKey][mi][tx.categoryId] || 0) + Number(tx.amount);
     }
-    setExpensesData(prev => {
-      const next = { ...prev };
-      // Reset txActuals for every known FY so that deleting all TXs in a
-      // month correctly clears the displayed value (not just merges).
-      for (const fyKey of Object.keys(next)) {
-        if (fyKey.startsWith("FY")) next[fyKey] = { ...next[fyKey], txActuals: {} };
-      }
-      // Write fresh TX totals
-      for (const [fyKey, months] of Object.entries(fyMap)) {
-        const existing = next[fyKey] || {};
-        next[fyKey] = { ...existing, txActuals: months };
-      }
-      return next;
-    });
+    // Start from a shallow copy of prevExpenses
+    const next = { ...prevExpenses };
+    // Reset all txActuals so deleted TXs don't linger
+    for (const fyKey of Object.keys(next)) {
+      if (fyKey.startsWith("FY")) next[fyKey] = { ...next[fyKey], txActuals: {} };
+    }
+    // Write fresh TX totals
+    for (const [fyKey, months] of Object.entries(fyMap)) {
+      next[fyKey] = { ...(next[fyKey] || {}), txActuals: months };
+    }
+    return next;
+  };
+
+  // Convenience: update state + return new expenses for immediate use in persist()
+  const rollTxIntoExpenses = (txList, currentExpenses) => {
+    const next = buildExpensesWithTx(txList, currentExpenses ?? expensesData);
+    setExpensesData(next);
+    return next;
   };
 
   const exportBackup = () => {
@@ -449,21 +451,24 @@ export default function FamilyFinanceTracker() {
         if (d.incomeData)      setIncomeData(d.incomeData);
         if (d.rsuData)         setRsuData(d.rsuData);
         if (d.investmentsData) setInvestmentsData(d.investmentsData);
-        if (d.expensesData)    setExpensesData(d.expensesData);
         if (d.portfolioData)   setPortfolioData(d.portfolioData);
         if (d.rsuGrants)       setRsuGrants(d.rsuGrants);
         if (d.holdingsData)    setHoldingsData(d.holdingsData);
-        if (d.txData)          setTxData(d.txData);
         if (d.retirementData)  setRetirementData(d.retirementData);
+        // Heal txActuals from txData when restoring backup
+        const restoredTx  = d.txData || txData;
+        const restoredExp = buildExpensesWithTx(restoredTx, d.expensesData || expensesData);
+        setTxData(restoredTx);
+        setExpensesData(restoredExp);
         persist(
           d.incomeData      || incomeData,
           d.rsuData         || rsuData,
           d.investmentsData || investmentsData,
-          d.expensesData    || expensesData,
+          restoredExp,
           d.portfolioData   || portfolioData,
           d.rsuGrants       || rsuGrants,
           d.holdingsData    || holdingsData,
-          d.txData          || txData,
+          restoredTx,
           d.retirementData  || retirementData,
         );
         setRestoreMsg({ type: "ok", text: "Backup restored successfully." });
