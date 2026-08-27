@@ -11,8 +11,8 @@
  *   Cache key per symbol: "ph1:<symbol>" → JSON { "YYYY-MM": price }
  */
 
-const PROXY   = "https://corsproxy.io/?";
-const YF_BASE = "https://query2.finance.yahoo.com/v8/finance/chart";
+import { fetchYahooChart } from "./yahooFinance";
+
 const MF_BASE = "https://api.mfapi.in/mf";
 
 function nowYM() {
@@ -34,10 +34,8 @@ function saveCache(symbol, data) {
 }
 
 async function fetchYFMonthly(symbol) {
-  const url = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1mo&range=10y`);
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`YF ${symbol}: HTTP ${res.status}`);
-  const json = await res.json();
+  const json = await fetchYahooChart(symbol, "interval=1mo&range=10y");
+  if (!json) throw new Error(`YF ${symbol}: fetch failed`);
   const result = json?.chart?.result?.[0];
   if (!result) throw new Error(`YF ${symbol}: empty result`);
 

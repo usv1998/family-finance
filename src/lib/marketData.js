@@ -2,15 +2,13 @@
 // Stocks: Yahoo Finance v8 via corsproxy.io (adds CORS headers).
 // Forex:  open.er-api.com (free, CORS-enabled, no auth).
 
-const PROXY   = "https://corsproxy.io/?";
-const YF_BASE = "https://query2.finance.yahoo.com/v8/finance/chart";
+import { fetchYahooChart } from "./yahooFinance";
+
 const FOREX_URL = "https://open.er-api.com/v6/latest/USD";
 
 async function fetchYFPrice(symbol) {
-  const url = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=1d`);
-  const res  = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
-  const json = await res.json();
+  const json = await fetchYahooChart(symbol, "interval=1d&range=1d");
+  if (!json) return null;
   return json?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null;
 }
 

@@ -4,17 +4,15 @@
 // FD:     quarterly compound interest (calculated)
 // EPF/PPF: manual balance, no fetch
 
-const PROXY   = "https://corsproxy.io/?";
-const YF_BASE = "https://query2.finance.yahoo.com/v8/finance/chart";
+import { fetchYahooChart } from "./yahooFinance";
+
 const MF_BASE = "https://api.mfapi.in/mf";
 
 // Fetch a stock price. US stocks return USD; Indian .NS/.BO stocks return INR.
 export async function fetchStockPrice(symbol) {
   try {
-    const url = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=1d`);
-    const res  = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const json = await res.json();
+    const json = await fetchYahooChart(symbol, "interval=1d&range=1d");
+    if (!json) return null;
     return json?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null;
   } catch { return null; }
 }
@@ -27,10 +25,8 @@ export async function fetchStockPrice(symbol) {
 // e.g. if NVDA crashed yesterday but is recovering today, this correctly shows the crash.
 export async function fetchStockPriceWithChange(symbol) {
   try {
-    const url    = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=5d`);
-    const res    = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const json   = await res.json();
+    const json   = await fetchYahooChart(symbol, "interval=1d&range=5d");
+    if (!json) return null;
     const result = json?.chart?.result?.[0];
     if (!result) return null;
 
@@ -129,10 +125,8 @@ export async function fetchMFNavWithChange(schemeCode) {
  */
 export async function fetchStockPriceAtDate(symbol, targetDate) {
   try {
-    const url = PROXY + encodeURIComponent(`${YF_BASE}/${symbol}?interval=1d&range=1y`);
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const json = await res.json();
+    const json = await fetchYahooChart(symbol, "interval=1d&range=1y");
+    if (!json) return null;
     const result = json?.chart?.result?.[0];
     if (!result) return null;
 
