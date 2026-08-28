@@ -7,7 +7,7 @@
  * Weekends/holidays: Frankfurter returns the most recent business day's rate.
  */
 
-import { fetchYahooChart } from "./yahooFinance";
+import { fetchStockPriceAtDateTD } from "./twelveData";
 
 const cache = new Map();
 
@@ -33,8 +33,7 @@ export async function fetchHistoricalUSDINR(dateStr) {
 
 /**
  * Fetch EOD closing price for a US stock on or before the given date.
- * Uses Yahoo Finance v8 via corsproxy.io (same as live prices).
- * Looks back up to 5 days to handle weekends/holidays.
+ * Uses Twelve Data daily history and returns the latest close on or before dateStr.
  */
 const priceCache = new Map();
 
@@ -44,14 +43,7 @@ export async function fetchHistoricalStockPrice(symbol, dateStr) {
   if (priceCache.has(key)) return priceCache.get(key);
 
   try {
-    const date = new Date(dateStr + "T00:00:00Z");
-    const period2 = Math.floor(date.getTime() / 1000) + 86400;        // end = date + 1 day
-    const period1 = period2 - 6 * 86400;                               // start = 6 days before
-    const json = await fetchYahooChart(symbol, `interval=1d&period1=${period1}&period2=${period2}`);
-    if (!json) return null;
-    const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
-    // Take the last non-null close (most recent trading day on or before requested date)
-    const price = [...closes].reverse().find(c => c != null) ?? null;
+    const price = await fetchStockPriceAtDateTD(symbol, dateStr);
     if (price) priceCache.set(key, Math.round(price * 100) / 100);
     return priceCache.get(key) ?? null;
   } catch {

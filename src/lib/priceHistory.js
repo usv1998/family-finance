@@ -2,8 +2,9 @@
  * Monthly historical price cache.
  *
  * Sources:
- *   Stocks / indices: Yahoo Finance v8, 10-year monthly range, via corsproxy.io
+ *   Stocks / indices: Twelve Data monthly time series
  *   Mutual funds:     mfapi.in (full AMFI NAV history, CORS-enabled)
+ *   USD/INR:          Frankfurter monthly FX history
  *
  * Caching strategy:
  *   Past months' prices never change → store permanently in localStorage.
@@ -11,7 +12,7 @@
  *   Cache key per symbol: "ph1:<symbol>" → JSON { "YYYY-MM": price }
  */
 
-import { fetchYahooChart } from "./yahooFinance";
+import { fetchMonthlyStockHistoryTD } from "./twelveData";
 
 const MF_BASE = "https://api.mfapi.in/mf";
 
@@ -34,24 +35,34 @@ function saveCache(symbol, data) {
 }
 
 async function fetchYFMonthly(symbol) {
-  const json = await fetchYahooChart(symbol, "interval=1mo&range=10y");
-  if (!json) throw new Error(`YF ${symbol}: fetch failed`);
-  const result = json?.chart?.result?.[0];
-  if (!result) throw new Error(`YF ${symbol}: empty result`);
+  const map = await fetchMonthlyStockHistoryTD(symbol);
+  if (!map || !Object.keys(map).length) throw new Error(`TD ${symbol}: empty result`);
+  return map;
+}
 
-  const timestamps = result.timestamp || [];
-  // Prefer adjusted close (accounts for splits/dividends); fall back to raw close
-  const prices =
-    result.indicators?.adjclose?.[0]?.adjclose ||
-    result.indicators?.quote?.[0]?.close || [];
+async function fetchUsdInrMonthly() {
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 10);
+  const from = start.toISOString().slice(0, 10);
 
+  const url = new URL("https://api.frankfurter.dev/v2/rates");
+  url.searchParams.set("from", from);
+  url.searchParams.set("base", "USD");
+  url.searchParams.set("quotes", "INR");
+  url.searchParams.set("group", "month");
+  url.searchParams.set("providers", "FBIL");
+
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) throw new Error(`FX USDINR: HTTP ${res.status}`);
+  const json = await res.json();
+
+  const series = json?.rates || {};
   const map = {};
-  timestamps.forEach((ts, i) => {
-    if (prices[i] == null) return;
-    const d   = new Date(ts * 1000);
-    const ym  = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    if (!map[ym]) map[ym] = prices[i];
-  });
+  for (const [date, row] of Object.entries(series)) {
+    const ym = date.slice(0, 7);
+    const rate = Number.parseFloat(row?.INR);
+    if (ym && Number.isFinite(rate) && map[ym] == null) map[ym] = rate;
+  }
   return map;
 }
 
@@ -90,6 +101,8 @@ export async function getMonthlyHistory(symbol, type = "stock") {
   try {
     fresh = type === "mf"
       ? await fetchMFMonthly(symbol)
+      : symbol === "USDINR=X"
+        ? await fetchUsdInrMonthly()
       : await fetchYFMonthly(symbol);
   } catch {
     return cached; // network failure → serve stale cache

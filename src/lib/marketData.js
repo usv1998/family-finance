@@ -1,15 +1,13 @@
 // Fetches live MSFT, NVDA prices and USD/INR rate.
-// Stocks: Yahoo Finance v8 via corsproxy.io (adds CORS headers).
+// Stocks: Twelve Data.
 // Forex:  open.er-api.com (free, CORS-enabled, no auth).
 
-import { fetchYahooChart } from "./yahooFinance";
+import { fetchStockPriceTD } from "./twelveData";
 
 const FOREX_URL = "https://open.er-api.com/v6/latest/USD";
 
 async function fetchYFPrice(symbol) {
-  const json = await fetchYahooChart(symbol, "interval=1d&range=1d");
-  if (!json) return null;
-  return json?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null;
+  return fetchStockPriceTD(symbol);
 }
 
 export async function fetchLiveData() {

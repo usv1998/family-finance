@@ -17,6 +17,17 @@
 ### Step 3 — Enable GitHub Pages
 Repo → **Settings** → **Pages** → Source: **GitHub Actions** → Save
 
+### Step 3.5 — Add GitHub Secrets
+Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+
+Add these secrets before the first production deploy:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_TWELVEDATA_API_KEY`
+
+`VITE_TWELVEDATA_API_KEY` is required for live stock prices and stock history in production. Create a Twelve Data API key, then add it as a GitHub Actions secret before deploying.
+
 ### Step 4 — Push the code
 Open Command Prompt / PowerShell in the unzipped folder:
 

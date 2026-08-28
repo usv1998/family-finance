@@ -20,6 +20,28 @@ import DailyExpensesTab from "./components/expenses/DailyExpensesTab";
 import PortfolioTab from "./components/portfolio/PortfolioTab";
 import RetirementTab from "./components/retirement/RetirementTab";
 
+function buildExpensesWithTx(txList, prevExpenses) {
+  const fyMap = {};
+  for (const tx of txList) {
+    const [y, m] = tx.date.split("-").map(Number); // m = 1-12
+    const fyYear = m >= 4 ? y : y - 1;
+    const fyKey  = `FY${fyYear}-${String(fyYear + 1).slice(2)}`;
+    const mi     = m >= 4 ? m - 4 : m + 8; // Apr=0, Mar=11
+    if (!fyMap[fyKey])       fyMap[fyKey]       = {};
+    if (!fyMap[fyKey][mi])   fyMap[fyKey][mi]   = {};
+    fyMap[fyKey][mi][tx.categoryId] = (fyMap[fyKey][mi][tx.categoryId] || 0) + Number(tx.amount);
+  }
+
+  const next = { ...prevExpenses };
+  for (const fyKey of Object.keys(next)) {
+    if (fyKey.startsWith("FY")) next[fyKey] = { ...next[fyKey], txActuals: {} };
+  }
+  for (const [fyKey, months] of Object.entries(fyMap)) {
+    next[fyKey] = { ...(next[fyKey] || {}), txActuals: months };
+  }
+  return next;
+}
+
 export default function FamilyFinanceTracker() {
   const [activeTab,      setActiveTab]      = useState("dashboard");
   const [fy,             setFY]             = useState(getCurrentFY());
@@ -52,7 +74,35 @@ export default function FamilyFinanceTracker() {
   const saveRef     = useRef(null);
   const userRef     = useRef(null);
   const restoreRef  = useRef(null);
+  const cloudUpdatedAtRef = useRef(null);
+  const pendingSaveRef = useRef(false);
   const [restoreMsg, setRestoreMsg] = useState(null); // { type: "ok"|"err", text }
+
+  const applyLoadedSnapshot = useCallback((saved) => {
+    const income = saved?.incomeData || SEED_DATA.incomeData;
+    const rsus = saved?.rsuData || SEED_DATA.rsuData;
+    const investments = saved?.investmentsData || SEED_DATA.investmentsData;
+    const portfolio = saved?.portfolioData || SEED_DATA.portfolioData;
+    const grants = saved?.rsuGrants || SEED_DATA.rsuGrants;
+    const holdings = saved?.holdingsData || [];
+    const retirement = saved?.retirementData || {};
+    const netWorth = saved?.nwHistory || [];
+    const tx = saved?.txData?.length > 0 ? saved.txData : IMPORTED_TX;
+    const baseExpenses = saved?.expensesData || SEED_DATA.expensesData;
+    const healedExpenses = buildExpensesWithTx(tx, baseExpenses);
+
+    setIncomeData(income);
+    setRsuData(rsus);
+    setInvestmentsData(investments);
+    setExpensesData(healedExpenses);
+    setPortfolioData(portfolio);
+    setRsuGrants(grants);
+    setHoldingsData(holdings);
+    setRetirementData(retirement);
+    setNwHistory(netWorth);
+    nwHistoryRef.current = netWorth;
+    setTxData(tx);
+  }, []);
 
   const refreshMarket = useCallback(async () => {
     setRefreshing(true);
@@ -111,56 +161,46 @@ export default function FamilyFinanceTracker() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   },[]); // userRef keeps this fresh without re-subscribing
 
-  // Load data once auth is ready
+  const refreshFromCloud = useCallback(async () => {
+    if (!supabase || !userRef.current?.id || pendingSaveRef.current) return;
+    const remote = await loadData(userRef.current.id, { remoteOnly: true });
+    if (!remote?.data || !remote.updatedAt) return;
+    if (!cloudUpdatedAtRef.current || remote.updatedAt > cloudUpdatedAtRef.current) {
+      applyLoadedSnapshot(remote.data);
+      cloudUpdatedAtRef.current = remote.updatedAt;
+    }
+  }, [applyLoadedSnapshot]);
+
+  // Load data once auth/user is ready
   useEffect(()=>{
     if(!authReady) return;
+    if (supabase && !user?.id) return;
     (async()=>{
-      const saved = await loadData(userRef.current?.id);
-      if(saved){
-        if(saved.incomeData)      setIncomeData(saved.incomeData);
-        if(saved.rsuData)         setRsuData(saved.rsuData);
-        if(saved.investmentsData) setInvestmentsData(saved.investmentsData);
-        if(saved.portfolioData)   setPortfolioData(saved.portfolioData);
-        else                      setPortfolioData(SEED_DATA.portfolioData);
-        if(saved.rsuGrants)       setRsuGrants(saved.rsuGrants);
-        else                      setRsuGrants(SEED_DATA.rsuGrants);
-        if(saved.holdingsData)    setHoldingsData(saved.holdingsData);
-        if(saved.retirementData)  setRetirementData(saved.retirementData);
-        if(saved.nwHistory) { setNwHistory(saved.nwHistory); nwHistoryRef.current = saved.nwHistory; }
-        // Seed imported transactions once if txData is empty
-        if(saved.txData?.length > 0) {
-          // Always rebuild txActuals from txData on load to heal any stale persisted state
-          const baseExp = saved.expensesData || SEED_DATA.expensesData;
-          const healedExp = buildExpensesWithTx(saved.txData, baseExp);
-          setExpensesData(healedExp);
-          setTxData(saved.txData);
-        } else {
-          setTxData(IMPORTED_TX);
-          persist(
-            saved.incomeData || SEED_DATA.incomeData,
-            saved.rsuData || SEED_DATA.rsuData,
-            saved.investmentsData || SEED_DATA.investmentsData,
-            saved.expensesData || SEED_DATA.expensesData,
-            saved.portfolioData || SEED_DATA.portfolioData,
-            saved.rsuGrants || SEED_DATA.rsuGrants,
-            saved.holdingsData || [],
-            IMPORTED_TX,
-            saved.retirementData || {},
-          );
-        }
+      setLoading(true);
+      const loaded = await loadData(userRef.current?.id);
+      if(loaded?.data){
+        applyLoadedSnapshot(loaded.data);
+        cloudUpdatedAtRef.current = loaded.updatedAt || null;
       } else {
-        setIncomeData(SEED_DATA.incomeData);
-        setRsuData(SEED_DATA.rsuData);
-        setInvestmentsData(SEED_DATA.investmentsData);
-        setExpensesData(SEED_DATA.expensesData);
-        setPortfolioData(SEED_DATA.portfolioData);
-        setRsuGrants(SEED_DATA.rsuGrants);
-        setTxData(IMPORTED_TX);
-        await saveData({ incomeData:SEED_DATA.incomeData, rsuData:SEED_DATA.rsuData, investmentsData:SEED_DATA.investmentsData, expensesData:SEED_DATA.expensesData, portfolioData:SEED_DATA.portfolioData, rsuGrants:SEED_DATA.rsuGrants, holdingsData:[], txData:IMPORTED_TX }, userRef.current?.id);
+        const initialData = {
+          incomeData: SEED_DATA.incomeData,
+          rsuData: SEED_DATA.rsuData,
+          investmentsData: SEED_DATA.investmentsData,
+          expensesData: SEED_DATA.expensesData,
+          portfolioData: SEED_DATA.portfolioData,
+          rsuGrants: SEED_DATA.rsuGrants,
+          holdingsData: [],
+          txData: IMPORTED_TX,
+          retirementData: {},
+          nwHistory: [],
+        };
+        applyLoadedSnapshot(initialData);
+        const saved = await saveData(initialData, userRef.current?.id);
+        cloudUpdatedAtRef.current = saved?.updatedAt || null;
       }
       setLoading(false);
     })();
-  },[authReady]);
+  },[authReady, user?.id, applyLoadedSnapshot]);
 
   const nwHistoryRef = useRef([]);
   const persist = useCallback((iD,rD,invD,expD,portD,rG,hD,tD,retD,nwH)=>{
@@ -168,7 +208,10 @@ export default function FamilyFinanceTracker() {
     setSyncing(true);
     saveRef.current = setTimeout(async()=>{
       const nwHistory = nwH ?? nwHistoryRef.current;
-      await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD, txData:tD, retirementData:retD, nwHistory}, userRef.current?.id);
+      pendingSaveRef.current = true;
+      const saved = await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD, txData:tD, retirementData:retD, nwHistory}, userRef.current?.id);
+      cloudUpdatedAtRef.current = saved?.updatedAt || cloudUpdatedAtRef.current;
+      pendingSaveRef.current = false;
       setSyncing(false);
     }, 500);
   },[]);
@@ -395,32 +438,6 @@ export default function FamilyFinanceTracker() {
     persist(incomeData, rsuData, investmentsData, nextExp, portfolioData, rsuGrants, holdingsData, nextTx, retirementData);
   };
 
-  // Pure function: compute new expensesData with txActuals rebuilt from txList.
-  // Returns the new expensesData object synchronously — no setState side effects.
-  const buildExpensesWithTx = (txList, prevExpenses) => {
-    const fyMap = {};
-    for (const tx of txList) {
-      const [y, m] = tx.date.split("-").map(Number); // m = 1-12
-      const fyYear = m >= 4 ? y : y - 1;
-      const fyKey  = `FY${fyYear}-${String(fyYear + 1).slice(2)}`;
-      const mi     = m >= 4 ? m - 4 : m + 8; // Apr=0, Mar=11
-      if (!fyMap[fyKey])       fyMap[fyKey]       = {};
-      if (!fyMap[fyKey][mi])   fyMap[fyKey][mi]   = {};
-      fyMap[fyKey][mi][tx.categoryId] = (fyMap[fyKey][mi][tx.categoryId] || 0) + Number(tx.amount);
-    }
-    // Start from a shallow copy of prevExpenses
-    const next = { ...prevExpenses };
-    // Reset all txActuals so deleted TXs don't linger
-    for (const fyKey of Object.keys(next)) {
-      if (fyKey.startsWith("FY")) next[fyKey] = { ...next[fyKey], txActuals: {} };
-    }
-    // Write fresh TX totals
-    for (const [fyKey, months] of Object.entries(fyMap)) {
-      next[fyKey] = { ...(next[fyKey] || {}), txActuals: months };
-    }
-    return next;
-  };
-
   // Convenience: update state + return new expenses for immediate use in persist()
   const rollTxIntoExpenses = (txList, currentExpenses) => {
     const next = buildExpensesWithTx(txList, currentExpenses ?? expensesData);
@@ -585,6 +602,20 @@ export default function FamilyFinanceTracker() {
     window.addEventListener("dk-switch-tab", handler);
     return () => window.removeEventListener("dk-switch-tab", handler);
   }, []);
+
+  useEffect(() => {
+    if (!supabase || !user?.id) return;
+    const onFocus = () => { refreshFromCloud(); };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshFromCloud();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [user?.id, refreshFromCloud]);
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {

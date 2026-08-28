@@ -1,19 +1,22 @@
 // Price fetching for all holding types.
-// Stocks: Yahoo Finance v8 via corsproxy.io
+// Stocks: Twelve Data
 // MFs:    mfapi.in (free, CORS-enabled, AMFI official NAV)
 // FD:     quarterly compound interest (calculated)
 // EPF/PPF: manual balance, no fetch
 
-import { fetchYahooChart } from "./yahooFinance";
+import { fetchHistoricalUSDINR } from "./historicalFX";
+import {
+  fetchStockPriceAtDateTD,
+  fetchStockPriceTD,
+  fetchStockPriceWithChangeTD,
+} from "./twelveData";
 
 const MF_BASE = "https://api.mfapi.in/mf";
 
 // Fetch a stock price. US stocks return USD; Indian .NS/.BO stocks return INR.
 export async function fetchStockPrice(symbol) {
   try {
-    const json = await fetchYahooChart(symbol, "interval=1d&range=1d");
-    if (!json) return null;
-    return json?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null;
+    return await fetchStockPriceTD(symbol);
   } catch { return null; }
 }
 
@@ -25,26 +28,7 @@ export async function fetchStockPrice(symbol) {
 // e.g. if NVDA crashed yesterday but is recovering today, this correctly shows the crash.
 export async function fetchStockPriceWithChange(symbol) {
   try {
-    const json   = await fetchYahooChart(symbol, "interval=1d&range=5d");
-    if (!json) return null;
-    const result = json?.chart?.result?.[0];
-    if (!result) return null;
-
-    const price  = result.meta?.regularMarketPrice ?? null;
-
-    // Historical closing prices for last 5 trading days (null = market still open today)
-    const allCloses = result.indicators?.quote?.[0]?.close ?? [];
-    const closes    = allCloses.filter(c => c != null); // completed sessions only
-
-    // Use the last two completed sessions: closes[-1] = yesterday, closes[-2] = day before
-    // Skipping today's live price so we always show the previous session's actual move.
-    const yesterday  = closes.length >= 1 ? closes[closes.length - 1] : null;
-    const dayBefore  = closes.length >= 2 ? closes[closes.length - 2] : null;
-    const changePct  = yesterday != null && dayBefore != null && dayBefore > 0
-      ? (yesterday - dayBefore) / dayBefore * 100
-      : null;
-
-    return { price, changePct, prevClose: dayBefore };
+    return await fetchStockPriceWithChangeTD(symbol);
   } catch { return null; }
 }
 
@@ -118,30 +102,12 @@ export async function fetchMFNavWithChange(schemeCode) {
 // ── Historical price fetching (for FY gain calculation) ──────────────────────
 
 /**
- * Fetch closing price of a stock/index on or nearest to targetDate.
- * Uses Yahoo Finance range=1y&interval=1d (covers last 12 months).
- * Accepts at most ±5 trading days from targetDate.
+ * Fetch closing price of a stock/index on or before targetDate.
  * Returns price or null.
  */
 export async function fetchStockPriceAtDate(symbol, targetDate) {
   try {
-    const json = await fetchYahooChart(symbol, "interval=1d&range=1y");
-    if (!json) return null;
-    const result = json?.chart?.result?.[0];
-    if (!result) return null;
-
-    const timestamps = result.timestamp || [];
-    const closes     = result.indicators?.quote?.[0]?.close || [];
-    const targetTs   = new Date(targetDate + "T00:00:00Z").getTime() / 1000;
-
-    let bestIdx = -1, bestDiff = Infinity;
-    for (let i = 0; i < timestamps.length; i++) {
-      if (closes[i] == null) continue;
-      const diff = Math.abs(timestamps[i] - targetTs);
-      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
-    }
-    // Accept only if within 5 calendar days
-    return bestIdx >= 0 && bestDiff <= 5 * 86400 ? closes[bestIdx] : null;
+    return await fetchStockPriceAtDateTD(symbol, targetDate);
   } catch { return null; }
 }
 
@@ -200,7 +166,7 @@ export async function fetchAllPricesAtDate(holdings, targetDate) {
     Promise.allSettled(mfCodes.map(c =>
       fetchMFNavAtDate(c, targetDate).then(n => ({ k: c, v: n }))
     )),
-    fetchStockPriceAtDate("USDINR=X", targetDate), // USD/INR on that date
+    fetchHistoricalUSDINR(targetDate),
   ]);
 
   const priceMap = {};
