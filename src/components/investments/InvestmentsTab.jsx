@@ -1,9 +1,11 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { T } from "../../lib/theme";
 import { fmtINR, getEsspINR } from "../../lib/formatters";
 import { genId } from "../../lib/formatters";
 import { PERSONS, MONTHS, MONTH_FULL, EMPLOYER, PERSON_STOCK } from "../../lib/constants";
 import { computeLifetimePlan } from "../retirement/engine";
+import { getDerivedHoldings } from "../../lib/derivedHoldings";
+import { fetchAllPricesWithChange, getCurrentValueINR } from "../../lib/priceService";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function fmtL(n) {
@@ -85,18 +87,88 @@ const DEFAULT_LONG_GOALS = [
   { name:"Child Education",   targetAmount:"10000000", targetDate:"2038-04-01", termType:"long", instrument:"Equity MF",    savedAmount:"0", notes:"" },
 ];
 
-export default function InvestmentsTab({ incomeData, rsuData, investmentsData, fy, onUpdateInvestments, goalLiveValues = {}, retirementData }) {
+export default function InvestmentsTab({
+  incomeData,
+  rsuData,
+  investmentsData,
+  holdingsData = [],
+  liveData,
+  fy,
+  onUpdateInvestments,
+  goalLiveValues = {},
+  retirementData,
+}) {
   const inv = investmentsData?.[fy] || {};
   const epfOpening = inv.epfOpening || { Selva:0, Akshaya:0 };
   const goals      = investmentsData?.goals || [];
+  const derivedGoalTags = investmentsData?.derivedGoalTags || {};
 
   const [newGoal,      setNewGoal]      = useState(EMPTY_GOAL);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [editGoalId,   setEditGoalId]   = useState(null);
   const [editGoalBal,  setEditGoalBal]  = useState(0);
+  const [goalPriceMap, setGoalPriceMap] = useState({});
 
   const updateInv   = (patch) => onUpdateInvestments(fy, { ...inv, ...patch });
   const updateGoals = (next)  => onUpdateInvestments("goals", next);
+  const usdinr = liveData?.USDINR || 85;
+
+  const taggedDerivedHoldings = useMemo(() => {
+    const derived = getDerivedHoldings(rsuData, incomeData, investmentsData);
+    return derived.filter(h => derivedGoalTags[h.id]);
+  }, [derivedGoalTags, rsuData, incomeData, investmentsData]);
+
+  const taggedStoredHoldings = useMemo(
+    () => (holdingsData || []).filter(h => h.goalTag),
+    [holdingsData]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadGoalPrices() {
+      const tagged = [...taggedStoredHoldings, ...taggedDerivedHoldings];
+      if (!tagged.length) {
+        setGoalPriceMap({});
+        return;
+      }
+
+      const { priceMap } = await fetchAllPricesWithChange(tagged);
+      if (cancelled) return;
+
+      const next = { ...priceMap };
+      Object.entries(liveData || {}).forEach(([key, value]) => {
+        if (typeof value === "number" && !["USDINR", "fetchedAt"].includes(key)) next[key] = value;
+      });
+      setGoalPriceMap(next);
+    }
+
+    loadGoalPrices();
+    return () => { cancelled = true; };
+  }, [taggedStoredHoldings, taggedDerivedHoldings, liveData]);
+
+  const computedGoalLiveValues = useMemo(() => {
+    if (!taggedStoredHoldings.length && !taggedDerivedHoldings.length) return {};
+
+    const map = {};
+
+    for (const h of taggedStoredHoldings) {
+      const val = getCurrentValueINR(h, goalPriceMap, usdinr);
+      if (val != null) map[h.goalTag] = (map[h.goalTag] || 0) + val;
+    }
+
+    for (const h of taggedDerivedHoldings) {
+      const goalId = derivedGoalTags[h.id];
+      const val = getCurrentValueINR(h, goalPriceMap, usdinr);
+      if (goalId && val != null) map[goalId] = (map[goalId] || 0) + val;
+    }
+
+    return map;
+  }, [taggedStoredHoldings, taggedDerivedHoldings, derivedGoalTags, goalPriceMap, usdinr]);
+
+  const resolvedGoalLiveValues = Object.keys(computedGoalLiveValues).length > 0
+    ? computedGoalLiveValues
+    : goalLiveValues;
 
   // Derive planned SIPs from retirementData for FY target computation
   const planSIPs = useMemo(() => {
@@ -297,7 +369,7 @@ export default function InvestmentsTab({ incomeData, rsuData, investmentsData, f
                 <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
                   {longGoals.map(g => {
                     const target   = Number(g.targetAmount) || 0;
-                    const liveVal  = goalLiveValues[g.id] ?? null;
+                    const liveVal  = resolvedGoalLiveValues[g.id] ?? null;
                     const saved    = liveVal != null ? liveVal : (Number(g.savedAmount) || 0);
                     const isLive   = liveVal != null;
                     const pct      = target > 0 ? Math.min(100, saved / target * 100) : 0;
