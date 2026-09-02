@@ -39,6 +39,9 @@ export const loadData = async (userId, options = {}) => {
           source: "cloud",
         };
       }
+      if (error) {
+        return remoteOnly ? { data: null, updatedAt: null, source: "error", error } : loadLocalSnapshot();
+      }
     } catch {}
   }
   if (remoteOnly) return null;
@@ -53,6 +56,7 @@ export const saveData = async (data, userId) => {
       const { error } = await supabase.from("finance_data")
         .upsert({ id: userId, data, updated_at: new Date().toISOString() });
       if (!error) return { updatedAt, source: "cloud" };
+      return { updatedAt, source: "local", error };
     } catch (e) { console.error("Supabase save failed:", e); }
   }
   return { updatedAt, source: "local" };

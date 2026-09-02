@@ -62,6 +62,8 @@ export default function FamilyFinanceTracker() {
   const [user,           setUser]           = useState(null);
   const [authReady,      setAuthReady]      = useState(!supabase); // true immediately if no supabase
   const [syncing,        setSyncing]        = useState(false);
+  const [syncState,      setSyncState]      = useState(supabase ? "checking" : "local-only");
+  const [lastSyncAt,     setLastSyncAt]     = useState(null);
   const [locked,         setLocked]         = useState(false);
   // Person filter — persisted across tabs via localStorage
   const [personFilter, setPersonFilter] = useState(() => {
@@ -103,6 +105,29 @@ export default function FamilyFinanceTracker() {
     nwHistoryRef.current = netWorth;
     setTxData(tx);
   }, []);
+
+  const currentSnapshot = useCallback(() => ({
+    incomeData,
+    rsuData,
+    investmentsData,
+    expensesData,
+    portfolioData,
+    rsuGrants,
+    holdingsData,
+    txData,
+    retirementData,
+    nwHistory: nwHistoryRef.current,
+  }), [
+    incomeData,
+    rsuData,
+    investmentsData,
+    expensesData,
+    portfolioData,
+    rsuGrants,
+    holdingsData,
+    txData,
+    retirementData,
+  ]);
 
   const refreshMarket = useCallback(async () => {
     setRefreshing(true);
@@ -163,13 +188,40 @@ export default function FamilyFinanceTracker() {
 
   const refreshFromCloud = useCallback(async () => {
     if (!supabase || !userRef.current?.id || pendingSaveRef.current) return;
+    setSyncState("checking");
     const remote = await loadData(userRef.current.id, { remoteOnly: true });
-    if (!remote?.data || !remote.updatedAt) return;
+    if (remote?.source === "error") {
+      setSyncState("local-pending");
+      return;
+    }
+    if (!remote?.data || !remote.updatedAt) {
+      setSyncState(cloudUpdatedAtRef.current ? "synced" : "local-only");
+      return;
+    }
     if (!cloudUpdatedAtRef.current || remote.updatedAt > cloudUpdatedAtRef.current) {
       applyLoadedSnapshot(remote.data);
       cloudUpdatedAtRef.current = remote.updatedAt;
     }
+    setLastSyncAt(remote.updatedAt);
+    setSyncState("synced");
   }, [applyLoadedSnapshot]);
+
+  const retryCloudSync = useCallback(async () => {
+    if (!supabase || !userRef.current?.id || pendingSaveRef.current) return;
+    setSyncing(true);
+    setSyncState("saving");
+    pendingSaveRef.current = true;
+    const saved = await saveData(currentSnapshot(), userRef.current.id);
+    pendingSaveRef.current = false;
+    setSyncing(false);
+    if (saved?.source === "cloud") {
+      cloudUpdatedAtRef.current = saved.updatedAt || cloudUpdatedAtRef.current;
+      setLastSyncAt(saved.updatedAt || null);
+      setSyncState("synced");
+      return;
+    }
+    setSyncState("local-pending");
+  }, [currentSnapshot]);
 
   // Load data once auth/user is ready
   useEffect(()=>{
@@ -181,6 +233,8 @@ export default function FamilyFinanceTracker() {
       if(loaded?.data){
         applyLoadedSnapshot(loaded.data);
         cloudUpdatedAtRef.current = loaded.updatedAt || null;
+        setLastSyncAt(loaded.updatedAt || null);
+        setSyncState(loaded.source === "cloud" ? "synced" : "local-only");
       } else {
         const initialData = {
           incomeData: SEED_DATA.incomeData,
@@ -197,6 +251,8 @@ export default function FamilyFinanceTracker() {
         applyLoadedSnapshot(initialData);
         const saved = await saveData(initialData, userRef.current?.id);
         cloudUpdatedAtRef.current = saved?.updatedAt || null;
+        setLastSyncAt(saved?.source === "cloud" ? saved.updatedAt || null : null);
+        setSyncState(saved?.source === "cloud" ? "synced" : "local-pending");
       }
       setLoading(false);
     })();
@@ -206,11 +262,18 @@ export default function FamilyFinanceTracker() {
   const persist = useCallback((iD,rD,invD,expD,portD,rG,hD,tD,retD,nwH)=>{
     if(saveRef.current) clearTimeout(saveRef.current);
     setSyncing(true);
+    setSyncState("saving");
     saveRef.current = setTimeout(async()=>{
       const nwHistory = nwH ?? nwHistoryRef.current;
       pendingSaveRef.current = true;
       const saved = await saveData({incomeData:iD, rsuData:rD, investmentsData:invD, expensesData:expD, portfolioData:portD, rsuGrants:rG, holdingsData:hD, txData:tD, retirementData:retD, nwHistory}, userRef.current?.id);
-      cloudUpdatedAtRef.current = saved?.updatedAt || cloudUpdatedAtRef.current;
+      if (saved?.source === "cloud") {
+        cloudUpdatedAtRef.current = saved.updatedAt || cloudUpdatedAtRef.current;
+        setLastSyncAt(saved.updatedAt || null);
+        setSyncState("synced");
+      } else {
+        setSyncState("local-pending");
+      }
       pendingSaveRef.current = false;
       setSyncing(false);
     }, 500);
@@ -667,6 +730,27 @@ export default function FamilyFinanceTracker() {
   );
 
   const selectStyle={padding:"8px 14px",background:T.card,border:`1px solid ${T.border}`,borderRadius:"8px",color:T.text,fontSize:"13px",outline:"none",cursor:"pointer",appearance:"none",fontWeight:600};
+  const syncColor = syncState === "saving" || syncState === "checking"
+    ? T.amber
+    : syncState === "synced"
+      ? T.accent
+      : T.red;
+  const syncLabel = syncState === "saving"
+    ? "Saving…"
+    : syncState === "checking"
+      ? "Checking…"
+      : syncState === "synced"
+        ? "Synced"
+        : syncState === "local-pending"
+          ? "Saved locally"
+          : "Local only";
+  const syncTitle = syncState === "local-pending"
+    ? "Changes are on this device but have not reached cloud sync yet."
+    : syncState === "synced" && lastSyncAt
+      ? `Last synced ${new Date(lastSyncAt).toLocaleString()}`
+      : "Cloud sync status";
+  const syncAction = syncState === "local-pending" ? retryCloudSync : refreshFromCloud;
+  const syncButtonLabel = syncState === "local-pending" ? "Retry Sync" : "Sync Now";
 
   return (
     <div style={{ minHeight:"100vh", background:T.bg, color:T.text, fontFamily:"'DM Sans',-apple-system,sans-serif" }}>
@@ -700,10 +784,30 @@ export default function FamilyFinanceTracker() {
             <div style={{ display:"flex", gap:"10px", alignItems:"center", flexWrap:"wrap" }}>
               <LiveStrip liveData={liveData} onRefresh={refreshMarket} refreshing={refreshing}/>
               {supabase && (
-                <div style={{ display:"flex", alignItems:"center", gap:"6px", fontSize:"11px", color:syncing?T.amber:T.accent, fontWeight:600 }}>
-                  <span style={{ width:"6px", height:"6px", borderRadius:"50%", background:syncing?T.amber:T.accent, display:"inline-block", animation:syncing?"pulse 1s infinite":"none" }}/>
-                  {syncing ? "Saving…" : "Synced"}
-                </div>
+                <>
+                  <div title={syncTitle} style={{ display:"flex", alignItems:"center", gap:"6px", fontSize:"11px", color:syncColor, fontWeight:600 }}>
+                    <span style={{ width:"6px", height:"6px", borderRadius:"50%", background:syncColor, display:"inline-block", animation:(syncState==="saving"||syncState==="checking")?"pulse 1s infinite":"none" }}/>
+                    {syncLabel}
+                  </div>
+                  <button
+                    onClick={syncAction}
+                    disabled={syncing || syncState === "checking"}
+                    title={syncState === "local-pending" ? "Retry uploading local changes to cloud" : "Check cloud for newer data"}
+                    style={{
+                      padding:"7px 12px",
+                      background:"transparent",
+                      border:`1px solid ${syncColor}44`,
+                      borderRadius:"8px",
+                      color:syncColor,
+                      fontSize:"11px",
+                      fontWeight:700,
+                      cursor:(syncing || syncState === "checking")?"not-allowed":"pointer",
+                      opacity:(syncing || syncState === "checking")?0.7:1,
+                    }}
+                  >
+                    {syncButtonLabel}
+                  </button>
+                </>
               )}
               <select value={fy} onChange={e=>setFY(e.target.value)} style={{...selectStyle,fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:T.accent}}>
                 {getFYOptions().map(f=><option key={f} value={f}>{f}</option>)}
