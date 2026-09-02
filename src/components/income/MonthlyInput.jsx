@@ -6,6 +6,7 @@ import { fetchHistoricalStockPrice, fetchHistoricalUSDINR } from "../../lib/hist
 export default function MonthlyInput({ data, onChange, person, onCopyFieldToAll }) {
   const isSelva = person === "Selva";
   const [fetchingField, setFetchingField] = useState("");
+  const [pendingDates, setPendingDates] = useState({});
   const fields = [
     { key:"take_home",      label:"Take-Home (₹)",    placeholder:"e.g. 185000" },
     { key:"epf",            label:"EPF (₹)",          placeholder:"e.g. 17200"  },
@@ -23,8 +24,7 @@ export default function MonthlyInput({ data, onChange, person, onCopyFieldToAll 
     borderRadius:"8px", color:T.text, fontSize:"14px", fontFamily:"'JetBrains Mono',monospace",
     outline:"none", boxSizing:"border-box" };
 
-  const updateWithHistorical = async (dateKey, dateValue) => {
-    onChange({ ...data, [dateKey]: dateValue });
+  const updateWithHistorical = async (dateKey, dateValue, snapshot) => {
     if (!dateValue || !/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return;
     if (new Date(dateValue) >= new Date()) return;
 
@@ -47,7 +47,7 @@ export default function MonthlyInput({ data, onChange, person, onCopyFieldToAll 
         if (price) patch.espp_price_usd = price.toString();
         if (fx) patch.espp_usd_inr = (Math.round(fx * 100) / 100).toString();
       }
-      onChange({ ...data, ...patch });
+      onChange({ ...snapshot, ...patch });
     } finally {
       setFetchingField("");
     }
@@ -72,14 +72,22 @@ export default function MonthlyInput({ data, onChange, person, onCopyFieldToAll 
             <input type={f.date?"date":"number"} value={data?.[f.key]??""} placeholder={f.placeholder}
               onChange={e=>{
                 if (f.key === "rsu_vest_date" || f.key === "espp_vest_date") {
-                  updateWithHistorical(f.key, e.target.value);
+                  setPendingDates(prev => ({ ...prev, [f.key]: e.target.value }));
+                  onChange({...data,[f.key]:e.target.value});
                   return;
                 }
                 onChange({...data,[f.key]:e.target.value});
               }}
-              style={{ ...inp, borderColor: fetchingField === f.key ? T.accent : T.border }}
               onFocus={e=>e.target.style.borderColor=T.accent}
-              onBlur={e=>e.target.style.borderColor=T.border}
+              onBlur={e=>{
+                e.target.style.borderColor=T.border;
+                if (f.key === "rsu_vest_date" || f.key === "espp_vest_date") {
+                  const dateValue = pendingDates[f.key] ?? data?.[f.key] ?? "";
+                  const snapshot = { ...data, [f.key]: dateValue };
+                  updateWithHistorical(f.key, dateValue, snapshot);
+                }
+              }}
+              style={{ ...inp, borderColor: fetchingField === f.key ? T.accent : T.border }}
             />
           </div>
         ))}
