@@ -620,11 +620,30 @@ const fmtINR = n => n == null ? "—" : `₹${Math.abs(Math.round(n)).toLocaleSt
 
 function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDeleteDerived, onAdd, onClose }) {
   const [showAddLot, setShowAddLot] = useState(false);
+  const [lotSort, setLotSort] = useState("date_desc");
   if (!modal) return null;
   const { label, holdings } = modal;
   // Infer type/person/symbol from first non-derived holding (or any holding)
   const ref = holdings.find(h => !h.derived) || holdings[0];
   const canAddLot = ref && (ref.type === "us_stock" || ref.type === "in_stock" || ref.type === "mf");
+  const sortedHoldings = [...holdings].sort((a, b) => {
+    const aDate = a.acquisitionDate || a.vest_date || a.addedAt || "";
+    const bDate = b.acquisitionDate || b.vest_date || b.addedAt || "";
+    const aVal = getHoldingValue(a, priceMap, usdinr);
+    const bVal = getHoldingValue(b, priceMap, usdinr);
+
+    switch (lotSort) {
+      case "date_asc":
+        return aDate.localeCompare(bDate);
+      case "value_desc":
+        return bVal - aVal;
+      case "value_asc":
+        return aVal - bVal;
+      case "date_desc":
+      default:
+        return bDate.localeCompare(aDate);
+    }
+  });
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000,
@@ -636,6 +655,31 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
           display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <span style={{ fontSize:"15px", fontWeight:700, color:T.text }}>{label}</span>
           <div style={{ display:"flex", gap:"8px", alignItems:"center" }}>
+            <div style={{ display:"flex", background:T.card, borderRadius:"8px", padding:"2px", gap:"2px" }}>
+              {[
+                ["date_desc", "Newest"],
+                ["date_asc", "Oldest"],
+                ["value_desc", "High Value"],
+                ["value_asc", "Low Value"],
+              ].map(([key, text]) => (
+                <button
+                  key={key}
+                  onClick={() => setLotSort(key)}
+                  style={{
+                    padding:"5px 9px",
+                    background: lotSort === key ? T.cta : "transparent",
+                    border:"none",
+                    borderRadius:"6px",
+                    color: lotSort === key ? "#fff" : T.textDim,
+                    fontSize:"11px",
+                    fontWeight:700,
+                    cursor:"pointer",
+                  }}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
             {canAddLot && (
               <button onClick={() => setShowAddLot(v => !v)}
                 style={{ padding:"5px 12px", background: showAddLot ? T.accentBg : T.card,
@@ -658,7 +702,7 @@ function StockModal({ modal, priceMap, usdinr, onDelete, onUpdateBalance, onDele
               onAdd={onAdd}
               onClose={() => setShowAddLot(false)}/>
           )}
-          {holdings.map(h => (
+          {sortedHoldings.map(h => (
             <HoldingCard key={h.id} holding={h} priceMap={priceMap} usdinr={usdinr}
               onDelete={onDelete} onUpdateBalance={onUpdateBalance}
               onDeleteDerived={onDeleteDerived}/>

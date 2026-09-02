@@ -42,6 +42,58 @@ function buildExpensesWithTx(txList, prevExpenses) {
   return next;
 }
 
+function syncIncomeMonthFromRsuEvents(incomeData, rsuData, fyKey, person, monthIdx) {
+  const nextIncome = { ...incomeData };
+  if (!nextIncome[fyKey]) nextIncome[fyKey] = {};
+  if (!nextIncome[fyKey][person]) nextIncome[fyKey][person] = {};
+
+  const currentMonth = nextIncome[fyKey][person][monthIdx] || {};
+  const monthEvents = (rsuData?.[fyKey] || []).filter(
+    (event) => event.person === person && event.month_idx === monthIdx
+  );
+
+  if (!monthEvents.length) {
+    nextIncome[fyKey][person][monthIdx] = {
+      ...currentMonth,
+      rsu_net_shares: "",
+      rsu_price_usd: "",
+      rsu_usd_inr: "",
+      rsu_vest_date: "",
+    };
+    return nextIncome;
+  }
+
+  const totals = monthEvents.reduce((acc, event) => {
+    const netUnits = Math.max(0, Number(event.units_vested) - (Number(event.tax_withheld_units) || 0));
+    const priceUsd = Number(event.stock_price_usd) || 0;
+    const usdInr = Number(event.usd_inr_rate) || 0;
+    acc.netShares += netUnits;
+    acc.priceWeighted += netUnits * priceUsd;
+    acc.netInr += netUnits * priceUsd * usdInr;
+    return acc;
+  }, { netShares: 0, priceWeighted: 0, netInr: 0 });
+
+  const latestVestDate = [...monthEvents]
+    .map((event) => event.vest_date)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || "";
+
+  const rsuPriceUsd = totals.netShares > 0 ? totals.priceWeighted / totals.netShares : 0;
+  const rsuUsdInr = totals.netShares > 0 && rsuPriceUsd > 0
+    ? totals.netInr / (totals.netShares * rsuPriceUsd)
+    : 0;
+
+  nextIncome[fyKey][person][monthIdx] = {
+    ...currentMonth,
+    rsu_net_shares: Number(totals.netShares.toFixed(4)),
+    rsu_price_usd: Number(rsuPriceUsd.toFixed(2)),
+    rsu_usd_inr: Number(rsuUsdInr.toFixed(2)),
+    rsu_vest_date: latestVestDate,
+  };
+  return nextIncome;
+}
+
 export default function FamilyFinanceTracker() {
   const [activeTab,      setActiveTab]      = useState("dashboard");
   const [fy,             setFY]             = useState(getCurrentFY());
@@ -301,15 +353,33 @@ export default function FamilyFinanceTracker() {
     const next={...rsuData};
     if(!next[event.fy]) next[event.fy]=[];
     next[event.fy]=[...next[event.fy],event];
+    const nextIncome = syncIncomeMonthFromRsuEvents(incomeData, next, event.fy, event.person, event.month_idx);
+    setIncomeData(nextIncome);
     setRsuData(next);
-    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
+    persist(nextIncome, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
   };
 
   const deleteRsuEvent = (id) => {
+    let deletedEvent = null;
     const next={...rsuData};
-    Object.keys(next).forEach(k=>{next[k]=next[k].filter(e=>e.id!==id);});
+    Object.keys(next).forEach(k=>{
+      const match = next[k].find(e=>e.id===id);
+      if (match) deletedEvent = match;
+      next[k]=next[k].filter(e=>e.id!==id);
+    });
+    let nextIncome = incomeData;
+    if (deletedEvent) {
+      nextIncome = syncIncomeMonthFromRsuEvents(
+        incomeData,
+        next,
+        deletedEvent.fy,
+        deletedEvent.person,
+        deletedEvent.month_idx
+      );
+      setIncomeData(nextIncome);
+    }
     setRsuData(next);
-    persist(incomeData, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
+    persist(nextIncome, next, investmentsData, expensesData, portfolioData, rsuGrants, holdingsData, txData, retirementData);
   };
 
   const addRsuGrant = (grant) => {
